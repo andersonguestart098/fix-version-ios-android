@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Image, StyleSheet, TouchableOpacity, Text, Modal, TouchableWithoutFeedback, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Image, StyleSheet, TouchableOpacity, Modal, TouchableWithoutFeedback, Text, Alert } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
@@ -10,7 +10,33 @@ type NavigationProps = NativeStackNavigationProp<RootStackParamList>;
 
 const Navbar: React.FC = () => {
   const [menuVisible, setMenuVisible] = useState(false);
+  const [avatar, setAvatar] = useState<string | null>(null);
   const navigation = useNavigation<NavigationProps>();
+
+  useEffect(() => {
+    const loadAvatarFromDB = async () => {
+      try {
+        const userId = await AsyncStorage.getItem('userId');
+        if (!userId) {
+          console.error('Usuário não encontrado no AsyncStorage.');
+          return;
+        }
+
+        // Fazer requisição ao backend para obter o avatar do usuário
+        const response = await fetch(`https://cemear-b549eb196d7c.herokuapp.com/user/${userId}/avatar`);
+        if (!response.ok) {
+          throw new Error('Erro ao buscar avatar do usuário.');
+        }
+
+        const data = await response.json();
+        setAvatar(data.avatar); // Atualiza o estado com a URL do avatar
+      } catch (error) {
+        console.error('Erro ao carregar avatar do banco:', error);
+      }
+    };
+
+    loadAvatarFromDB();
+  }, []);
 
   const toggleMenu = () => {
     setMenuVisible(!menuVisible);
@@ -18,35 +44,34 @@ const Navbar: React.FC = () => {
 
   const handleLogout = async () => {
     try {
-      await AsyncStorage.removeItem('token'); // Remove o token de autenticação
+      await AsyncStorage.multiRemove(['token', 'userId', 'tipoUsuario', 'avatar']);
       Alert.alert('Logout', 'Você saiu com sucesso.');
-
-      // Redireciona para a tela de Login
       navigation.reset({
         index: 0,
         routes: [{ name: 'Login' }],
       });
     } catch (error) {
       Alert.alert('Erro', 'Não foi possível realizar o logout.');
+      console.error('Erro no logout:', error);
     }
   };
 
   return (
     <View style={styles.container}>
-      {/* Ícone de menu à esquerda */}
       <TouchableOpacity onPress={toggleMenu}>
         <Icon name="menu" size={28} color="black" />
       </TouchableOpacity>
 
-      {/* Logo centralizada */}
       <Image source={require('../../assets/logo.png')} style={styles.logo} />
 
-      {/* Ícone de avatar à direita */}
       <TouchableOpacity>
-        <Icon name="account-circle" size={28} color="black" />
+        {avatar ? (
+          <Image source={{ uri: avatar }} style={styles.avatar} />
+        ) : (
+          <Icon name="account-circle" size={28} color="black" />
+        )}
       </TouchableOpacity>
 
-      {/* Menu Dropdown Modal */}
       <Modal
         transparent
         visible={menuVisible}
@@ -90,6 +115,11 @@ const styles = StyleSheet.create({
     height: 40,
     resizeMode: 'contain',
   },
+  avatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.3)',
@@ -101,8 +131,8 @@ const styles = StyleSheet.create({
     padding: 10,
     width: 150,
     position: 'absolute',
-    top: 90, // Abaixo do Navbar
-    left: 20, // Alinha com o botão de menu
+    top: 90,
+    left: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,

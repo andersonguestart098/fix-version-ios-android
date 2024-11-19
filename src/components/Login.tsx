@@ -29,12 +29,16 @@ const Login: React.FC = () => {
   }, []);
 
   const checkAuthStatus = async () => {
-    const token = await AsyncStorage.getItem("token");
-    if (token) {
-      navigation.reset({
-        index: 0,
-        routes: [{ name: "Feed" as never }], // Redireciona para o Feed
-      });
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (token) {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: "Feed" as never }],
+        });
+      }
+    } catch (error) {
+      console.error("Erro ao verificar autenticação:", error);
     }
   };
 
@@ -48,13 +52,17 @@ const Login: React.FC = () => {
 
       const { token, userId, tipoUsuario } = response.data;
 
-      // Salvar dados de autenticação
+      // Salvar apenas o token e userId no AsyncStorage
       await AsyncStorage.multiSet([
         ["token", token],
         ["userId", userId],
         ["tipoUsuario", tipoUsuario],
       ]);
 
+      // Buscar avatar após o login bem-sucedido
+      await fetchUserAvatar(userId);
+
+      // Registra push token para notificações
       await registerForPushNotifications();
 
       navigation.reset({
@@ -68,6 +76,18 @@ const Login: React.FC = () => {
       );
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchUserAvatar = async (userId: string) => {
+    try {
+      const response = await axios.get(`${BASE_URL}/user/${userId}/avatar`);
+      const { avatar } = response.data;
+
+      // Salva o avatar no AsyncStorage para exibição posterior
+      await AsyncStorage.setItem("avatar", avatar);
+    } catch (error) {
+      console.error("Erro ao buscar avatar do usuário:", error.response?.data || error.message);
     }
   };
 
@@ -102,9 +122,6 @@ const Login: React.FC = () => {
       await axios.post(`${BASE_URL}/registerPushToken`, {
         userId,
         expoPushToken,
-        endpoint: expoPushToken,
-        p256dh: "public-key-placeholder",
-        auth: "auth-key-placeholder",
       });
 
       console.log("Push token registrado com sucesso:", expoPushToken);
