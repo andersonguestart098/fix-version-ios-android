@@ -1,12 +1,34 @@
 import React, { useState } from 'react';
-import { View, Image, StyleSheet, TouchableOpacity, Text, Modal, TouchableWithoutFeedback } from 'react-native';
+import { View, Image, StyleSheet, TouchableOpacity, Text, Modal, TouchableWithoutFeedback, Alert } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../types';
+
+type NavigationProps = NativeStackNavigationProp<RootStackParamList>;
 
 const Navbar: React.FC = () => {
   const [menuVisible, setMenuVisible] = useState(false);
+  const navigation = useNavigation<NavigationProps>();
 
   const toggleMenu = () => {
     setMenuVisible(!menuVisible);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await AsyncStorage.removeItem('token'); // Remove o token de autenticação
+      Alert.alert('Logout', 'Você saiu com sucesso.');
+
+      // Redireciona para a tela de Login
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Login' }],
+      });
+    } catch (error) {
+      Alert.alert('Erro', 'Não foi possível realizar o logout.');
+    }
   };
 
   return (
@@ -19,9 +41,9 @@ const Navbar: React.FC = () => {
       {/* Logo centralizada */}
       <Image source={require('../../assets/logo.png')} style={styles.logo} />
 
-      {/* Ícone de notificações à direita */}
+      {/* Ícone de avatar à direita */}
       <TouchableOpacity>
-        <Icon name="bell-outline" size={28} color="black" />
+        <Icon name="account-circle" size={28} color="black" />
       </TouchableOpacity>
 
       {/* Menu Dropdown Modal */}
@@ -40,7 +62,7 @@ const Navbar: React.FC = () => {
               <TouchableOpacity style={styles.menuItem}>
                 <Text style={styles.menuText}>Opção 2</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.menuItem}>
+              <TouchableOpacity style={styles.menuItem} onPress={handleLogout}>
                 <Text style={styles.menuText}>Sair</Text>
               </TouchableOpacity>
             </View>
