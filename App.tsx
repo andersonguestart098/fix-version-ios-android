@@ -125,16 +125,16 @@ const FeedScreen: React.FC = () => {
       {/* Botões de navegação na parte inferior */}
       <View style={styles.footerButtons}>
         <TouchableOpacity onPress={() => console.log("Home")} style={styles.iconContainer}>
-          <Ionicons name="home-outline" size={30} color="black" />
+          <Ionicons name="home-outline" size={24} color="black" />
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => setShowPostForm(true)}
-          style={[styles.iconContainer, styles.addButtonContainer]}
+          style={styles.iconContainer}
         >
-          <Ionicons name="add-circle" size={60} color="#007AFF" />
+          <Ionicons name="add-circle-outline" size={24} color="black" />
         </TouchableOpacity>
         <TouchableOpacity onPress={() => console.log("Likes")} style={styles.iconContainer}>
-          <Ionicons name="heart-outline" size={30} color="black" />
+          <Ionicons name="heart-outline" size={24} color="black" />
         </TouchableOpacity>
       </View>
     </SafeAreaView>
