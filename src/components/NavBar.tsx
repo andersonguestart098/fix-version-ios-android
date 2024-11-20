@@ -11,30 +11,39 @@ type NavigationProps = NativeStackNavigationProp<RootStackParamList>;
 const Navbar: React.FC = () => {
   const [avatar, setAvatar] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
+  const [imageError, setImageError] = useState(false); // Indica erro no carregamento da imagem
   const navigation = useNavigation<NavigationProps>();
 
   useEffect(() => {
     const loadUserData = async () => {
       try {
         const userId = await AsyncStorage.getItem('userId');
-        const userNameStored = await AsyncStorage.getItem('userName'); // Assumindo que o nome do usuário está salvo no AsyncStorage
-        
         if (!userId) {
           console.error('Usuário não encontrado no AsyncStorage.');
           return;
         }
 
-        if (userNameStored) {
-          setUserName(userNameStored);
-        }
+        const url = `https://cemear-b549eb196d7c.herokuapp.com/auth/user/${userId}`;
+        console.log('Fetching user data from:', url);
 
-        const response = await fetch(`https://cemear-b549eb196d7c.herokuapp.com/user/${userId}/avatar`);
+        const response = await fetch(url);
         if (!response.ok) {
-          throw new Error('Erro ao buscar avatar do usuário.');
+          throw new Error(`Erro ao buscar dados do usuário: ${response.status}`);
         }
 
         const data = await response.json();
-        setAvatar(data.avatar);
+        console.log('Dados do usuário recebidos:', data);
+
+        // Validação da URL do avatar
+        const isValidUrl = await validateImageUrl(data.avatar);
+        if (isValidUrl) {
+          setAvatar(data.avatar || null);
+        } else {
+          console.error('A URL do avatar não é válida:', data.avatar);
+          setImageError(true);
+        }
+
+        setUserName(data.usuario || 'Usuário');
       } catch (error) {
         console.error('Erro ao carregar dados do usuário:', error);
       }
@@ -42,6 +51,16 @@ const Navbar: React.FC = () => {
 
     loadUserData();
   }, []);
+
+  const validateImageUrl = async (url: string): Promise<boolean> => {
+    try {
+      const response = await fetch(url, { method: 'HEAD' }); // Verifica se a URL é acessível
+      return response.ok;
+    } catch (error) {
+      console.error('Erro ao validar a URL da imagem:', error);
+      return false;
+    }
+  };
 
   const handleLogout = async () => {
     try {
@@ -59,16 +78,20 @@ const Navbar: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      {/* Logo no lado esquerdo */}
       <Image source={require('../../assets/logo.png')} style={styles.logo} />
-
-      {/* Saudação e Avatar do lado direito */}
       <TouchableOpacity style={styles.rightSection} onPress={handleLogout}>
-        <Text style={styles.greetingText}>Olá, {userName || 'Usuário'}</Text>
-        {avatar ? (
-          <Image source={{ uri: avatar }} style={styles.avatar} />
+        <Text style={styles.greetingText}>Olá, {userName}.</Text>
+        {avatar && !imageError ? (
+          <Image
+            source={{ uri: avatar }}
+            style={styles.avatar}
+            onError={() => {
+              console.error('Erro ao carregar imagem do avatar');
+              setImageError(true); // Define o estado de erro
+            }}
+          />
         ) : (
-          <Icon name="account-circle" size={28} color="black" />
+          <Icon name="account-circle" size={50} color="black" />
         )}
       </TouchableOpacity>
     </View>
@@ -78,38 +101,41 @@ const Navbar: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 20,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderColor: '#E0E0E0',
-    height: 100, // Ajustado para mais espaço vertical
-    paddingTop: 10,
+    borderColor: '#0094FD',
+    height: 100,
+    paddingTop: 15,
   },
   logo: {
-    width: 150, // Aumentado para maior visibilidade
-    height: 50,  
+    width: 150,
+    height: 50,
     resizeMode: 'contain',
+    position: 'absolute', // Fixa a posição da logo
+    left: 5,
+    bottom: 20
   },
   rightSection: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginLeft: 'auto', // Empurra o conteúdo para a direita
   },
   greetingText: {
-    fontSize: 18, // Texto maior para combinar com o avatar maior
+    fontSize: 15,
     marginRight: 10,
     color: '#333',
   },
   avatar: {
-    width: 50, // Avatar maior
-    height: 50, 
-    borderRadius: 25, // Proporcional ao novo tamanho para manter a forma circular
-    borderWidth: 2, // Borda mais visível
-    borderColor: '#0094FD', // Azul claro para destacar
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    borderWidth: 2,
+    borderColor: '#0094FD',
   },
 });
-
 
 
 export default Navbar;

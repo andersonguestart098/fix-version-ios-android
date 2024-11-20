@@ -131,7 +131,7 @@ const FeedScreen: React.FC = () => {
           onPress={() => setShowPostForm(true)}
           style={styles.iconContainer}
         >
-          <Ionicons name="add-circle-outline" size={24} color="black" />
+          <Ionicons name="add-circle-outline" size={34} color="black" />
         </TouchableOpacity>
         <TouchableOpacity onPress={() => console.log("Likes")} style={styles.iconContainer}>
           <Ionicons name="heart-outline" size={24} color="black" />
