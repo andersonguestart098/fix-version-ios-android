@@ -384,6 +384,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = CemearApp/CemearApp.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 753P27TU33;
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"$(inherited)",
@@ -434,7 +435,7 @@
 					"-lc++",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
-				PRODUCT_BUNDLE_IDENTIFIER = com.felipetartari.CemearApp;
+				PRODUCT_BUNDLE_IDENTIFIER = com.theanderson98.CemearApp;
 				PRODUCT_NAME = CemearApp;
 				SWIFT_OBJC_BRIDGING_HEADER = "CemearApp/CemearApp-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;

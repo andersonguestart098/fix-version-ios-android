@@ -14,6 +14,8 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import axios from 'axios';
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Keyboard } from 'react-native';
+
 
 interface PostFormProps {
   onClose: () => void;
@@ -103,13 +105,18 @@ const PostForm: React.FC<PostFormProps> = ({ onClose }) => {
               value={titulo}
               onChangeText={setTitulo}
             />
-            <TextInput
-              style={[styles.input, styles.textArea]}
-              placeholder="Conteúdo"
-              value={conteudo}
-              onChangeText={setConteudo}
-              multiline
-            />
+           <TextInput
+            style={[styles.input, styles.textArea]}
+            placeholder="Conteúdo"
+            value={conteudo}
+            onChangeText={setConteudo}
+            multiline
+            returnKeyType="done" // Muda o botão "Enter" para "Done" no teclado
+            blurOnSubmit={true} // Faz o teclado desaparecer ao apertar "Done"
+            onSubmitEditing={() => {
+              Keyboard.dismiss(); // Fecha o teclado manualmente
+            }}
+          />
             {anexo && <Image source={{ uri: anexo }} style={styles.imagePreview} />}
             <TouchableOpacity style={styles.button} onPress={handleImagePicker}>
               <Text style={styles.buttonText}>Anexar Imagem</Text>

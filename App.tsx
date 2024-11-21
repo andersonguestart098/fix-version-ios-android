@@ -14,7 +14,7 @@ import PostForm from "./src/components/PostForm";
 import Login from "./src/components/Login";
 import ReactionList from "./src/screens/Reacoes";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { NavigationContainer } from "@react-navigation/native";
+import { NavigationContainer, useNavigation } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import * as Font from "expo-font";
@@ -24,6 +24,12 @@ import CommentsScreen from "./src/screens/Comments";
 import { RootStackParamList } from "./src/types";
 import { enableScreens } from "react-native-screens";
 import MainLayout from "./src/screens/MainLayout"; // O layout com o Navbar
+import CalendarEvents from "./src/components/CalendarioEventos";
+import CalendarHolidays from "./src/components/CalendarioFerias";
+import CalendarBirthdays from "./src/components/CalendarioAniversarios";
+import { Text} from "react-native";
+import * as Device from "expo-device";
+
 
 enableScreens();
 SplashScreen.preventAutoHideAsync();
@@ -75,12 +81,11 @@ const App: React.FC = () => {
           return;
         }
       }
-
+  
       const expoPushToken = (await Notifications.getExpoPushTokenAsync()).data;
       const devicePlatform = Platform.OS;
-
-      console.log("Token de Notificação Push:", expoPushToken);
-
+      const deviceName = Device.modelName || "Unknown Device";
+  
       const userId = await AsyncStorage.getItem("userId");
       if (userId) {
         await fetch("https://cemear-b549eb196d7c.herokuapp.com/registerPushToken", {
@@ -91,34 +96,17 @@ const App: React.FC = () => {
           body: JSON.stringify({
             userId,
             expoPushToken,
-            deviceName: Platform.OS === "ios" ? "iPhone" : "Android",
+            deviceName,
             devicePlatform,
           }),
         });
       }
-
-      const foregroundSubscription =
-        Notifications.addNotificationReceivedListener((notification) => {
-          Alert.alert(
-            "Nova Notificação",
-            notification.request.content.body || ""
-          );
-        });
-
-      const responseSubscription =
-        Notifications.addNotificationResponseReceivedListener((response) => {
-          Alert.alert("Notificação Interagida", "Usuário clicou na notificação.");
-        });
-
-        
-      return () => {
-        foregroundSubscription.remove();
-        responseSubscription.remove();
-      };
     } catch (error) {
       console.error("Erro ao configurar notificações:", error);
     }
   };
+  
+  
 
   if (!fontsLoaded || loadingAuth) {
     return <ActivityIndicator style={{ flex: 1 }} size="large" />;
@@ -126,44 +114,78 @@ const App: React.FC = () => {
 
   return (
     <NavigationContainer>
-      <Stack.Navigator
-        initialRouteName={initialRoute}
-        screenOptions={{ headerShown: false }}
-      >
-        <Stack.Screen name="Login" component={Login} />
-        <Stack.Screen name="Feed">
-          {() => (
-            <MainLayout>
-              <FeedScreen />
-            </MainLayout>
-          )}
-        </Stack.Screen>
-        <Stack.Screen name="ReactionList">
-          {() => (
-            <MainLayout>
-              <ReactionList />
-            </MainLayout>
-          )}
-        </Stack.Screen>
-        <Stack.Screen name="Comments">
-          {() => (
-            <MainLayout>
-              <CommentsScreen />
-            </MainLayout>
-          )}
-        </Stack.Screen>
-      </Stack.Navigator>
-    </NavigationContainer>
-  );
-};
+  <Stack.Navigator
+    initialRouteName={initialRoute}
+    screenOptions={{
+      headerShown: false, // Nenhum cabeçalho visível
+      gestureEnabled: true, // Gesto de deslizar habilitado
+    }}
+  >
+    <Stack.Screen name="Login" component={Login} />
+    <Stack.Screen name="Feed">
+      {() => (
+        <MainLayout>
+          <FeedScreen />
+        </MainLayout>
+      )}
+    </Stack.Screen>
+    <Stack.Screen name="ReactionList">
+      {() => (
+        <MainLayout>
+          <ReactionList />
+        </MainLayout>
+      )}
+    </Stack.Screen>
+    <Stack.Screen name="Comments">
+      {() => (
+        <MainLayout>
+          <CommentsScreen />
+        </MainLayout>
+      )}
+    </Stack.Screen>
+    <Stack.Screen name="CalendarHolidays">
+      {() => (
+        <MainLayout>
+          <CalendarHolidays />
+        </MainLayout>
+      )}
+    </Stack.Screen>
+    <Stack.Screen name="CalendarEvents">
+      {() => (
+        <MainLayout>
+          <CalendarEvents />
+        </MainLayout>
+      )}
+    </Stack.Screen>
+    <Stack.Screen name="CalendarBirthdays">
+      {() => (
+        <MainLayout>
+          <CalendarBirthdays />
+        </MainLayout>
+      )}
+    </Stack.Screen>
+  </Stack.Navigator>
+</NavigationContainer>
 
-const FeedScreen: React.FC = () => {
+  
+          );
+        };
+
+    const FeedScreen: React.FC = () => {
   const [showPostForm, setShowPostForm] = useState(false);
+  const [showCalendarModal, setShowCalendarModal] = useState(false);
+  const navigation = useNavigation();
+
+  const openCalendar = (screen: string) => {
+    setShowCalendarModal(false);
+    navigation.navigate(screen as never); // Navega para a tela correspondente
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       <Feed />
 
+      {/* Modal para o formulário de postagem */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -175,6 +197,49 @@ const FeedScreen: React.FC = () => {
         </View>
       </Modal>
 
+      {/* Modal para escolher o calendário */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={showCalendarModal}
+        onRequestClose={() => setShowCalendarModal(false)}
+      >
+        <View style={styles.calendarModalOverlay}>
+          <View style={styles.calendarModal}>
+          <View style={styles.modalTitle}>
+  <Text>Escolha o Calendário</Text>
+</View>
+
+
+            <TouchableOpacity
+              style={styles.calendarOption}
+              onPress={() => openCalendar("CalendarEvents")}
+            >
+              <Text style={styles.optionText}>Calendário de Eventos</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.calendarOption}
+              onPress={() => openCalendar("CalendarHolidays")}
+            >
+              <Text style={styles.optionText}>Calendário de Férias</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.calendarOption}
+              onPress={() => openCalendar("CalendarBirthdays")}
+            >
+              <Text style={styles.optionText}>Calendário de Aniversários</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setShowCalendarModal(false)}
+            >
+              <Text style={styles.closeButtonText}>Fechar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Botões inferiores */}
       <View style={styles.footerButtons}>
         <TouchableOpacity
           onPress={() => console.log("Home")}
@@ -189,10 +254,10 @@ const FeedScreen: React.FC = () => {
           <Ionicons name="add-circle-outline" size={34} color="black" />
         </TouchableOpacity>
         <TouchableOpacity
-          onPress={() => console.log("Likes")}
+          onPress={() => setShowCalendarModal(true)}
           style={styles.iconContainer}
         >
-          <Ionicons name="heart-outline" size={24} color="black" />
+          <Ionicons name="calendar-outline" size={24} color="black" />
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -227,6 +292,48 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "rgba(0, 0, 0, 0.5)",
+  },
+  calendarModalOverlay: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+  },
+  calendarModal: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 10,
+    padding: 20,
+    width: "80%",
+    alignItems: "center",
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 20,
+  },
+  
+  calendarOption: {
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E0E0E0",
+    width: "100%",
+    alignItems: "center",
+  },
+  optionText: {
+    fontSize: 16,
+    color: "#007AFF",
+  },
+  closeButton: {
+    marginTop: 20,
+    padding: 10,
+    backgroundColor: "#007AFF",
+    borderRadius: 8,
+    width: "100%",
+    alignItems: "center",
+  },
+  closeButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
   },
 });
 
