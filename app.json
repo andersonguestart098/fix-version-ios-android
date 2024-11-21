@@ -4,10 +4,10 @@
     "slug": "CemearApp",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/logoIcon.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/splash.png",
+      "image": "./assets/logoIcon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -17,23 +17,22 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/logoIcon.png",
         "backgroundColor": "#ffffff"
       },
       "package": "com.theanderson98.CemearApp"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/logoIcon.png"
     },
     "extra": {
       "eas": {
         "projectId": "ecf65d93-030d-40c4-9c90-1bc55efa9eaf"
       }
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.0.0",
     "updates": {
+      "enabled": true,
       "url": "https://u.expo.dev/ecf65d93-030d-40c4-9c90-1bc55efa9eaf"
     }
   }

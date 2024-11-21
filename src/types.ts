@@ -3,9 +3,13 @@
 export type RootStackParamList = {
   Login: undefined;
   Feed: undefined;
-  ReactionList: { postId: string };
-  Comments: { postId: string }; // Adicionada
+  CalendarEvents: undefined;
+  CalendarHolidays: undefined;
+  CalendarBirthdays: undefined;
+  Comments: { postId: string };
+  ReactionList: { postId: string }; // Adicionando ReactionList com parâmetros
 };
+
 
 export interface DocumentPickerSuccessResult {
   type: "success";

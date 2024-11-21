@@ -7,8 +7,8 @@ import {
   Alert,
   Modal,
   TouchableOpacity,
+  Platform,
 } from "react-native";
-import Navbar from "./src/components/NavBar";
 import Feed from "./src/components/Feed";
 import PostForm from "./src/components/PostForm";
 import Login from "./src/components/Login";
@@ -23,6 +23,7 @@ import * as Notifications from "expo-notifications";
 import CommentsScreen from "./src/screens/Comments";
 import { RootStackParamList } from "./src/types";
 import { enableScreens } from "react-native-screens";
+import MainLayout from "./src/screens/MainLayout"; // O layout com o Navbar
 
 enableScreens();
 SplashScreen.preventAutoHideAsync();
@@ -64,23 +65,59 @@ const App: React.FC = () => {
     }
   };
 
-  const setupNotificationListeners = () => {
-    const foregroundSubscription = Notifications.addNotificationReceivedListener(
-      (notification) => {
-        Alert.alert("Nova Notificação", notification.request.content.body || "");
+  const setupNotificationListeners = async () => {
+    try {
+      const { status } = await Notifications.getPermissionsAsync();
+      if (status !== "granted") {
+        const finalStatus = await Notifications.requestPermissionsAsync();
+        if (finalStatus.status !== "granted") {
+          console.warn("Permissões de notificação não concedidas.");
+          return;
+        }
       }
-    );
 
-    const responseSubscription = Notifications.addNotificationResponseReceivedListener(
-      (response) => {
-        Alert.alert("Notificação Interagida", "Usuário clicou na notificação.");
+      const expoPushToken = (await Notifications.getExpoPushTokenAsync()).data;
+      const devicePlatform = Platform.OS;
+
+      console.log("Token de Notificação Push:", expoPushToken);
+
+      const userId = await AsyncStorage.getItem("userId");
+      if (userId) {
+        await fetch("https://cemear-b549eb196d7c.herokuapp.com/registerPushToken", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            userId,
+            expoPushToken,
+            deviceName: Platform.OS === "ios" ? "iPhone" : "Android",
+            devicePlatform,
+          }),
+        });
       }
-    );
 
-    return () => {
-      foregroundSubscription.remove();
-      responseSubscription.remove();
-    };
+      const foregroundSubscription =
+        Notifications.addNotificationReceivedListener((notification) => {
+          Alert.alert(
+            "Nova Notificação",
+            notification.request.content.body || ""
+          );
+        });
+
+      const responseSubscription =
+        Notifications.addNotificationResponseReceivedListener((response) => {
+          Alert.alert("Notificação Interagida", "Usuário clicou na notificação.");
+        });
+
+        
+      return () => {
+        foregroundSubscription.remove();
+        responseSubscription.remove();
+      };
+    } catch (error) {
+      console.error("Erro ao configurar notificações:", error);
+    }
   };
 
   if (!fontsLoaded || loadingAuth) {
@@ -94,9 +131,27 @@ const App: React.FC = () => {
         screenOptions={{ headerShown: false }}
       >
         <Stack.Screen name="Login" component={Login} />
-        <Stack.Screen name="Feed" component={FeedScreen} />
-        <Stack.Screen name="ReactionList" component={ReactionList} />
-        <Stack.Screen name="Comments" component={CommentsScreen} />
+        <Stack.Screen name="Feed">
+          {() => (
+            <MainLayout>
+              <FeedScreen />
+            </MainLayout>
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="ReactionList">
+          {() => (
+            <MainLayout>
+              <ReactionList />
+            </MainLayout>
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="Comments">
+          {() => (
+            <MainLayout>
+              <CommentsScreen />
+            </MainLayout>
+          )}
+        </Stack.Screen>
       </Stack.Navigator>
     </NavigationContainer>
   );
@@ -107,10 +162,8 @@ const FeedScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Navbar />
       <Feed />
 
-      {/* Modal para o formulário de Post */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -122,9 +175,11 @@ const FeedScreen: React.FC = () => {
         </View>
       </Modal>
 
-      {/* Botões de navegação na parte inferior */}
       <View style={styles.footerButtons}>
-        <TouchableOpacity onPress={() => console.log("Home")} style={styles.iconContainer}>
+        <TouchableOpacity
+          onPress={() => console.log("Home")}
+          style={styles.iconContainer}
+        >
           <Ionicons name="home-outline" size={24} color="black" />
         </TouchableOpacity>
         <TouchableOpacity
@@ -133,7 +188,10 @@ const FeedScreen: React.FC = () => {
         >
           <Ionicons name="add-circle-outline" size={34} color="black" />
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => console.log("Likes")} style={styles.iconContainer}>
+        <TouchableOpacity
+          onPress={() => console.log("Likes")}
+          style={styles.iconContainer}
+        >
           <Ionicons name="heart-outline" size={24} color="black" />
         </TouchableOpacity>
       </View>
@@ -149,7 +207,7 @@ const styles = StyleSheet.create({
   footerButtons: {
     flexDirection: "row",
     justifyContent: "space-around",
-    alignItems: "center", // Garante alinhamento na horizontal
+    alignItems: "center",
     paddingVertical: 10,
     borderTopWidth: 1,
     borderColor: "#E0E0E0",
@@ -163,9 +221,6 @@ const styles = StyleSheet.create({
   iconContainer: {
     justifyContent: "center",
     alignItems: "center",
-  },
-  addButtonContainer: {
-    transform: [{ translateY: -10 }], // Eleva levemente o ícone "+" para centralizá-lo melhor
   },
   modalContainer: {
     flex: 1,

@@ -25,39 +25,42 @@ type PostType = {
   conteudo: string;
   imagePath: string | null;
   reactions: { [key: string]: number };
-  comments: any[];
-  user: { usuario: string } | null;
+  comments: { length: number };
+  user: {
+    id: string;
+    usuario: string;
+    avatar: string | null;
+  } | null;
 };
+
+// Configuração do Axios para incluir o token automaticamente
+axios.interceptors.request.use(async (config) => {
+  const token = await AsyncStorage.getItem("token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
 
 const Feed: React.FC = () => {
   const [posts, setPosts] = useState<PostType[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // Use o hook corretamente dentro do componente
+  const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   const fetchPosts = async () => {
     try {
       setLoading(true);
-      const token = await AsyncStorage.getItem("token");
-      if (!token) {
-        console.warn("Token de autenticação não encontrado.");
-        return;
-      }
-
-      const response = await axios.get(`${BASE_URL}/posts`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      const posts = await Promise.all(
+      const response = await axios.get(`${BASE_URL}/posts`);
+      const enrichedPosts = await Promise.all(
         response.data.map(async (post: PostType) => {
-          const reactionCounts = await fetchReactionCounts(post.id);
-          const comments = await fetchComments(post.id);
-          return { ...post, reactions: reactionCounts, comments };
+          const reactions = await fetchReactionCounts(post.id);
+          const commentsCount = await fetchCommentCount(post.id);
+          return { ...post, reactions, comments: { length: commentsCount } };
         })
       );
 
-      setPosts(posts);
+      setPosts(enrichedPosts);
     } catch (error) {
       console.error("Erro ao buscar posts:", error);
     } finally {
@@ -75,42 +78,33 @@ const Feed: React.FC = () => {
     }
   };
 
-  const fetchComments = async (postId: string) => {
+  const fetchCommentCount = async (postId: string) => {
     try {
-      const token = await AsyncStorage.getItem("token");
-      if (!token) throw new Error("Token não encontrado");
-
-      const response = await axios.get(`${BASE_URL}/posts/${postId}/comments`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      return response.data || [];
+      const response = await axios.get(`${BASE_URL}/posts/${postId}/comments/count`);
+      return response.data.commentCount || 0;
     } catch (error) {
-      console.error("Erro ao buscar comentários:", error);
-      return [];
+      console.error("Erro ao buscar contagem de comentários:", error);
+      return 0;
     }
   };
 
   const handleReaction = async (postId: string, reactionType: string) => {
     try {
-      const token = await AsyncStorage.getItem("token");
-      if (!token) throw new Error("Usuário não autenticado.");
+      const response = await axios.post(`${BASE_URL}/posts/${postId}/reaction`, {
+        type: reactionType,
+      });
 
-      await axios.post(
-        `${BASE_URL}/posts/${postId}/reaction`,
-        { type: reactionType },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      setPosts((prev) =>
-        prev.map((post) =>
-          post.id === postId
-            ? { ...post, reactions: { ...post.reactions, [reactionType]: (post.reactions[reactionType] || 0) + 1 } }
-            : post
+      const updatedPost = response.data;
+      setPosts((prevPosts) =>
+        prevPosts.map((post) =>
+          post.id === updatedPost.id ? { ...post, reactions: updatedPost.reactions } : post
         )
       );
     } catch (error) {
-      console.error("Erro ao reagir:", error);
+      console.error("Erro ao registrar reação:", error);
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
+        console.error("Erro de autenticação. Verifique seu token.");
+      }
     }
   };
 
@@ -121,19 +115,20 @@ const Feed: React.FC = () => {
       console.log("Conectado ao WebSocket");
     });
 
-    socket.on("post-reaction-updated", async (updatedPost: PostType) => {
-      const reactionCounts = await fetchReactionCounts(updatedPost.id);
-      setPosts((prev) =>
-        prev.map((post) =>
-          post.id === updatedPost.id ? { ...updatedPost, reactions: reactionCounts } : post
+    socket.on("post-reaction-updated", (updatedPost: PostType) => {
+      setPosts((prevPosts) =>
+        prevPosts.map((post) =>
+          post.id === updatedPost.id ? { ...post, ...updatedPost } : post
         )
       );
     });
 
-    socket.on("comment-added", ({ postId, comment }) => {
-      setPosts((prev) =>
-        prev.map((post) =>
-          post.id === postId ? { ...post, comments: [comment, ...post.comments] } : post
+    socket.on("comment-added", ({ postId }) => {
+      setPosts((prevPosts) =>
+        prevPosts.map((post) =>
+          post.id === postId
+            ? { ...post, comments: { length: post.comments.length + 1 } }
+            : post
         )
       );
     });
@@ -145,31 +140,42 @@ const Feed: React.FC = () => {
     };
   }, []);
 
-  const renderPost = ({ item }: { item: PostType }) => (
-    <View style={styles.postContainer}>
-      <Text style={styles.username}>{item.user?.usuario || "Usuário Anônimo"}</Text>
-      {item.imagePath && <Image source={{ uri: item.imagePath }} style={styles.postImage} />}
-      <Text style={styles.caption}>{item.titulo}</Text>
-      <Text style={styles.content}>{item.conteudo}</Text>
-  
-      <TouchableOpacity onPress={() => navigation.navigate("ReactionList", { postId: item.id })}>
-        <Text>Ver quem reagiu</Text>
-      </TouchableOpacity>
-  
-      <View style={styles.actionRow}>
-        <TouchableOpacity onPress={() => handleReaction(item.id, "like")}>
-          <Ionicons name="heart-outline" size={24} color="red" />
-          <Text>{item.reactions?.like || 0}</Text>
+  const renderPost = ({ item }: { item: PostType }) => {
+    const avatarUri = imageErrors[item.id]
+      ? "https://via.placeholder.com/50"
+      : item.user?.avatar || "https://via.placeholder.com/50";
+
+    return (
+      <View style={styles.postContainer}>
+        <View style={styles.userInfo}>
+          <Image
+            source={{ uri: avatarUri }}
+            style={styles.avatar}
+            onError={() => setImageErrors((prev) => ({ ...prev, [item.id]: true }))}
+          />
+          <Text style={styles.username}>{item.user?.usuario || "Usuário Anônimo"}</Text>
+        </View>
+        {item.imagePath && <Image source={{ uri: item.imagePath }} style={styles.postImage} />}
+        <Text style={styles.caption}>{item.titulo}</Text>
+        <Text style={styles.content}>{item.conteudo}</Text>
+
+        <TouchableOpacity onPress={() => navigation.navigate("ReactionList", { postId: item.id })}>
+          <Text style={styles.reactionText}>Ver quem reagiu</Text>
         </TouchableOpacity>
-  
-        <TouchableOpacity onPress={() => navigation.navigate("Comments", { postId: item.id })}>
-          <Ionicons name="chatbubble-outline" size={24} color="blue" />
-          <Text>{item.comments?.length || 0}</Text>
-        </TouchableOpacity>
+
+        <View style={styles.actionRow}>
+          <TouchableOpacity onPress={() => handleReaction(item.id, "like")}>
+            <Ionicons name="heart-outline" size={24} color="red" />
+            <Text>{item.reactions?.like || 0}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.navigate("Comments", { postId: item.id })}>
+            <Ionicons name="chatbubble-outline" size={24} color="blue" />
+            <Text>{item.comments?.length || 0}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
-    </View>
-  );
-  
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -198,6 +204,17 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
+  userInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 10,
+  },
   username: {
     fontWeight: "bold",
     fontSize: 16,
@@ -217,6 +234,11 @@ const styles = StyleSheet.create({
     marginTop: 5,
     fontSize: 14,
     color: "#333",
+  },
+  reactionText: {
+    marginTop: 10,
+    fontSize: 14,
+    color: "#007AFF",
   },
   actionRow: {
     flexDirection: "row",

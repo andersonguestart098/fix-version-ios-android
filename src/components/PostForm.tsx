@@ -1,6 +1,19 @@
 import React, { useState } from 'react';
-import { View, TextInput, TouchableOpacity, Text, StyleSheet, Image, Alert, Dimensions, ActivityIndicator, TouchableWithoutFeedback } from 'react-native';
+import {
+  View,
+  TextInput,
+  TouchableOpacity,
+  Text,
+  StyleSheet,
+  Image,
+  Alert,
+  Dimensions,
+  ActivityIndicator,
+  TouchableWithoutFeedback,
+} from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import axios from 'axios';
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 interface PostFormProps {
   onClose: () => void;
@@ -17,7 +30,7 @@ const PostForm: React.FC<PostFormProps> = ({ onClose }) => {
   const handleImagePicker = async () => {
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permissionResult.granted) {
-      Alert.alert("Permissão necessária", "Por favor, conceda permissão para acessar a galeria.");
+      Alert.alert('Permissão necessária', 'Por favor, conceda permissão para acessar a galeria.');
       return;
     }
 
@@ -31,20 +44,52 @@ const PostForm: React.FC<PostFormProps> = ({ onClose }) => {
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!titulo || !conteudo) {
       Alert.alert("Erro", "Por favor, preencha todos os campos.");
       return;
     }
-
-    setLoading(true); // Inicia o loader
-
-    setTimeout(() => {
-      setLoading(false); // Para o loader após envio simulado
+  
+    setLoading(true);
+  
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) {
+        throw new Error("Token de autenticação não encontrado.");
+      }
+  
+      const formData = new FormData();
+      formData.append("titulo", titulo);
+      formData.append("conteudo", conteudo);
+  
+      if (anexo) {
+        const fileName = anexo.split("/").pop();
+        const fileType = fileName?.split(".").pop();
+  
+        formData.append("image", {
+          uri: anexo,
+          name: fileName || "upload.jpg",
+          type: `image/${fileType || "jpeg"}`,
+        } as any);
+      }
+  
+      const response = await axios.post(`https://cemear-b549eb196d7c.herokuapp.com/posts`, formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+          Authorization: `Bearer ${token}`, // Envia o token de autenticação
+        },
+      });
+  
+      setLoading(false);
       Alert.alert("Sucesso", "Post enviado com sucesso!");
-      onClose(); // Fecha o modal após envio
-    }, 2000); // Simula o tempo de envio
+      onClose();
+    } catch (error) {
+      setLoading(false);
+      console.error("Erro ao enviar post:", error);
+      Alert.alert("Erro", "Não foi possível enviar o post. Tente novamente.");
+    }
   };
+  
 
   return (
     <TouchableWithoutFeedback onPress={onClose}>
@@ -71,7 +116,7 @@ const PostForm: React.FC<PostFormProps> = ({ onClose }) => {
             </TouchableOpacity>
             <TouchableOpacity style={[styles.button, styles.submitButton]} onPress={handleSubmit}>
               {loading ? (
-                <ActivityIndicator size="small" color="#FFF" /> // Loader no botão
+                <ActivityIndicator size="small" color="#FFF" />
               ) : (
                 <Text style={[styles.buttonText, { color: 'white' }]}>Enviar</Text>
               )}
@@ -85,10 +130,10 @@ const PostForm: React.FC<PostFormProps> = ({ onClose }) => {
 
 const styles = StyleSheet.create({
   modalOverlay: {
-    flex: 1, // Garante que o overlay preencha todo o espaço disponível
-    width: '100%', // Assegura que cobre toda a largura da tela
-    height: '100%', // Assegura que cobre toda a altura da tela
-    backgroundColor: 'rgba(0, 0, 0, 0.5)', // Fundo preto transparente
+    flex: 1,
+    width: '100%',
+    height: '100%',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -139,6 +184,5 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
 });
-
 
 export default PostForm;
