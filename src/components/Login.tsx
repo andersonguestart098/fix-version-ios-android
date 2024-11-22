@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import {
   View,
-  Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
@@ -9,6 +8,8 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Image,
+  Text, // Certifique-se de importar Text
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation } from "@react-navigation/native";
@@ -52,17 +53,13 @@ const Login: React.FC = () => {
 
       const { token, userId, tipoUsuario } = response.data;
 
-      // Salvar apenas o token e userId no AsyncStorage
       await AsyncStorage.multiSet([
         ["token", token],
         ["userId", userId],
         ["tipoUsuario", tipoUsuario],
       ]);
 
-      // Buscar avatar após o login bem-sucedido
       await fetchUserAvatar(userId);
-
-      // Registra push token para notificações
       await registerForPushNotifications();
 
       navigation.reset({
@@ -83,8 +80,6 @@ const Login: React.FC = () => {
     try {
       const response = await axios.get(`${BASE_URL}/user/${userId}/avatar`);
       const { avatar } = response.data;
-
-      // Salva o avatar no AsyncStorage para exibição posterior
       await AsyncStorage.setItem("avatar", avatar);
     } catch (error) {
       console.error("Erro ao buscar avatar do usuário:", error.response?.data || error.message);
@@ -135,7 +130,8 @@ const Login: React.FC = () => {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={styles.container}
     >
-      <Text style={styles.logo}>CEMEAR</Text>
+    <Image source={require('../../assets/logo.png')} style={styles.logo} />
+
       <TextInput
         style={styles.input}
         placeholder="Usuário"
@@ -174,9 +170,9 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   logo: {
-    fontSize: 32,
-    fontWeight: "bold",
-    marginBottom: 20,
+    width: 160,
+    height: 40,
+    marginBottom: 30,
   },
   input: {
     width: "100%",
