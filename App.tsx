@@ -8,11 +8,8 @@ import {
   Modal,
   TouchableOpacity,
   Platform,
+  Text,
 } from "react-native";
-import Feed from "./src/components/Feed";
-import PostForm from "./src/components/PostForm";
-import Login from "./src/components/Login";
-import ReactionList from "./src/screens/Reacoes";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { NavigationContainer, useNavigation } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
@@ -20,26 +17,30 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Font from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 import * as Notifications from "expo-notifications";
-import CommentsScreen from "./src/screens/Comments";
-import { RootStackParamList } from "./src/types";
+import * as Device from "expo-device";
 import { enableScreens } from "react-native-screens";
-import MainLayout from "./src/screens/MainLayout"; // O layout com o Navbar
+
+import Feed from "./src/components/Feed";
+import PostForm from "./src/components/PostForm";
+import Login from "./src/components/Login";
+import ReactionList from "./src/screens/Reacoes";
+import CommentsScreen from "./src/screens/Comments";
 import CalendarEvents from "./src/components/CalendarioEventos";
 import CalendarHolidays from "./src/components/CalendarioFerias";
 import CalendarBirthdays from "./src/components/CalendarioAniversarios";
-import { Text} from "react-native";
-import * as Device from "expo-device";
-
+import MainLayout from "./src/screens/MainLayout";
+import { RootStackParamList } from "./src/types";
 
 enableScreens();
 SplashScreen.preventAutoHideAsync();
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
+// Configuração do comportamento de notificações
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
-    shouldPlaySound: false,
+    shouldPlaySound: true,
     shouldSetBadge: false,
   }),
 });
@@ -56,6 +57,7 @@ const App: React.FC = () => {
 
   const loadFontsAndAuth = async () => {
     try {
+      // Carrega as fontes necessárias
       await Font.loadAsync({
         Ionicons: require("@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf"),
       });
@@ -73,22 +75,42 @@ const App: React.FC = () => {
 
   const setupNotificationListeners = async () => {
     try {
-      const { status } = await Notifications.getPermissionsAsync();
-      if (status !== "granted") {
-        const finalStatus = await Notifications.requestPermissionsAsync();
-        if (finalStatus.status !== "granted") {
-          console.warn("Permissões de notificação não concedidas.");
-          return;
-        }
+      console.log("Configurando notificações...");
+
+      // Solicita permissões de notificações
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+
+      if (existingStatus !== "granted") {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
       }
-  
-      const expoPushToken = (await Notifications.getExpoPushTokenAsync()).data;
+
+      if (finalStatus !== "granted") {
+        console.warn("Permissões de notificações não concedidas.");
+        return;
+      }
+
+      console.log("Permissões de notificações concedidas.");
+
+      // Obter token Expo Push
+      const { data: expoPushToken } = await Notifications.getExpoPushTokenAsync({
+        projectId: "ecf65d93-030d-40c4-9c90-1bc55efa9eaf", // Substitua pelo seu Project ID
+      });
+      console.log("Token Expo Push obtido:", expoPushToken);
+
+      // Informações do dispositivo
       const devicePlatform = Platform.OS;
       const deviceName = Device.modelName || "Unknown Device";
-  
+
+      console.log("Plataforma:", devicePlatform, "| Dispositivo:", deviceName);
+
+      // Registrar o token no backend
       const userId = await AsyncStorage.getItem("userId");
       if (userId) {
-        await fetch("https://cemear-b549eb196d7c.herokuapp.com/registerPushToken", {
+        console.log("Registrando token no backend para userId:", userId);
+
+        const response = await fetch("https://cemear-b549eb196d7c.herokuapp.com/registerPushToken", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -100,13 +122,44 @@ const App: React.FC = () => {
             devicePlatform,
           }),
         });
+
+        if (response.ok) {
+          console.log("Token registrado com sucesso no backend.");
+        } else {
+          const errorDetails = await response.json();
+          console.error("Erro ao registrar token no backend:", errorDetails);
+        }
+      } else {
+        console.warn("Nenhum userId encontrado no AsyncStorage.");
       }
+
+      // Listener para notificações recebidas enquanto o app está aberto
+      const subscription = Notifications.addNotificationReceivedListener((notification) => {
+        console.log("Notificação recebida:", notification);
+        Alert.alert(
+          notification.request.content.title || "Notificação",
+          notification.request.content.body || ""
+        );
+      });
+
+      // Listener para interações com notificações
+      const responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
+        console.log("Interação com notificação:", response);
+        const postId = response.notification.request.content.data.postId;
+        if (postId) {
+          console.log(`Abrindo post com ID: ${postId}`);
+          // Exemplo: Navegar para a tela correspondente
+        }
+      });
+
+      return () => {
+        subscription.remove();
+        responseSubscription.remove();
+      };
     } catch (error) {
       console.error("Erro ao configurar notificações:", error);
     }
   };
-  
-  
 
   if (!fontsLoaded || loadingAuth) {
     return <ActivityIndicator style={{ flex: 1 }} size="large" />;
@@ -114,71 +167,66 @@ const App: React.FC = () => {
 
   return (
     <NavigationContainer>
-  <Stack.Navigator
-    initialRouteName={initialRoute}
-    screenOptions={{
-      headerShown: false, // Nenhum cabeçalho visível
-      gestureEnabled: true, // Gesto de deslizar habilitado
-    }}
-  >
-    <Stack.Screen name="Login" component={Login} />
-    <Stack.Screen name="Feed">
-      {() => (
-        <MainLayout>
-          <FeedScreen />
-        </MainLayout>
-      )}
-    </Stack.Screen>
-    <Stack.Screen name="ReactionList">
-      {() => (
-        <MainLayout>
-          <ReactionList />
-        </MainLayout>
-      )}
-    </Stack.Screen>
-    <Stack.Screen name="Comments">
-      {() => (
-        <MainLayout>
-          <CommentsScreen />
-        </MainLayout>
-      )}
-    </Stack.Screen>
-    <Stack.Screen name="CalendarHolidays">
-      {() => (
-        <MainLayout>
-          <CalendarHolidays />
-        </MainLayout>
-      )}
-    </Stack.Screen>
-    <Stack.Screen name="CalendarEvents">
-      {() => (
-        <MainLayout>
-          <CalendarEvents />
-        </MainLayout>
-      )}
-    </Stack.Screen>
-    <Stack.Screen name="CalendarBirthdays">
-      {() => (
-        <MainLayout>
-          <CalendarBirthdays />
-        </MainLayout>
-      )}
-    </Stack.Screen>
-  </Stack.Navigator>
-</NavigationContainer>
+      <Stack.Navigator
+        initialRouteName={initialRoute}
+        screenOptions={{ headerShown: false }}
+      >
+        <Stack.Screen name="Login" component={Login} />
+        <Stack.Screen name="Feed">
+          {() => (
+            <MainLayout>
+              <FeedScreen />
+            </MainLayout>
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="ReactionList">
+          {() => (
+            <MainLayout>
+              <ReactionList />
+            </MainLayout>
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="Comments">
+          {() => (
+            <MainLayout>
+              <CommentsScreen />
+            </MainLayout>
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="CalendarHolidays">
+          {() => (
+            <MainLayout>
+              <CalendarHolidays />
+            </MainLayout>
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="CalendarEvents">
+          {() => (
+            <MainLayout>
+              <CalendarEvents />
+            </MainLayout>
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="CalendarBirthdays">
+          {() => (
+            <MainLayout>
+              <CalendarBirthdays />
+            </MainLayout>
+          )}
+        </Stack.Screen>
+      </Stack.Navigator>
+    </NavigationContainer>
+  );
+};
 
-  
-          );
-        };
-
-    const FeedScreen: React.FC = () => {
+const FeedScreen: React.FC = () => {
   const [showPostForm, setShowPostForm] = useState(false);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const navigation = useNavigation();
 
   const openCalendar = (screen: string) => {
     setShowCalendarModal(false);
-    navigation.navigate(screen as never); // Navega para a tela correspondente
+    navigation.navigate(screen as never);
   };
 
   return (
@@ -206,11 +254,7 @@ const App: React.FC = () => {
       >
         <View style={styles.calendarModalOverlay}>
           <View style={styles.calendarModal}>
-          <View style={styles.modalTitle}>
-  <Text>Escolha o Calendário</Text>
-</View>
-
-
+            <Text style={styles.modalTitle}>Escolha o Calendário</Text>
             <TouchableOpacity
               style={styles.calendarOption}
               onPress={() => openCalendar("CalendarEvents")}
@@ -265,10 +309,7 @@ const App: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
-  },
+  container: { flex: 1, backgroundColor: "#FFFFFF" },
   footerButtons: {
     flexDirection: "row",
     justifyContent: "space-around",
@@ -283,10 +324,7 @@ const styles = StyleSheet.create({
     right: 0,
     height: 70,
   },
-  iconContainer: {
-    justifyContent: "center",
-    alignItems: "center",
-  },
+  iconContainer: { justifyContent: "center", alignItems: "center" },
   modalContainer: {
     flex: 1,
     justifyContent: "center",
@@ -306,12 +344,7 @@ const styles = StyleSheet.create({
     width: "80%",
     alignItems: "center",
   },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    marginBottom: 20,
-  },
-  
+  modalTitle: { fontSize: 18, fontWeight: "bold", marginBottom: 20 },
   calendarOption: {
     paddingVertical: 10,
     borderBottomWidth: 1,
@@ -319,10 +352,7 @@ const styles = StyleSheet.create({
     width: "100%",
     alignItems: "center",
   },
-  optionText: {
-    fontSize: 16,
-    color: "#007AFF",
-  },
+  optionText: { fontSize: 16, color: "#007AFF" },
   closeButton: {
     marginTop: 20,
     padding: 10,
@@ -331,10 +361,7 @@ const styles = StyleSheet.create({
     width: "100%",
     alignItems: "center",
   },
-  closeButtonText: {
-    color: "#FFFFFF",
-    fontSize: 16,
-  },
+  closeButtonText: { color: "#FFFFFF", fontSize: 16 },
 });
 
 export default App;
