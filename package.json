@@ -29,6 +29,7 @@
     "expo-splash-screen": "^0.27.6",
     "expo-status-bar": "~1.12.1",
     "expo-updates": "~0.25.27",
+    "jwt-decode": "^4.0.0",
     "react": "18.2.0",
     "react-native": "0.74.5",
     "react-native-axios": "^0.17.1",
@@ -48,6 +49,7 @@
     "@babel/core": "^7.20.0",
     "@react-native-community/cli": "^15.1.0",
     "@types/axios": "^0.14.4",
+    "@types/jwt-decode": "^2.2.1",
     "@types/react": "~18.2.79",
     "@types/react-navigation": "^3.4.0",
     "typescript": "~5.3.3"

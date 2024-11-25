@@ -200,98 +200,109 @@ const App: React.FC = () => {
           );
         };
 
-    const FeedScreen: React.FC = () => {
-  const [showPostForm, setShowPostForm] = useState(false);
-  const [showCalendarModal, setShowCalendarModal] = useState(false);
-  const navigation = useNavigation();
-
-  const openCalendar = (screen: string) => {
-    setShowCalendarModal(false);
-    navigation.navigate(screen as never); // Navega para a tela correspondente
-  };
-
-  return (
-    <SafeAreaView style={styles.container}>
-      <Feed />
-
-      {/* Modal para o formulário de postagem */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={showPostForm}
-        onRequestClose={() => setShowPostForm(false)}
-      >
-        <View style={styles.modalContainer}>
-          <PostForm onClose={() => setShowPostForm(false)} />
-        </View>
-      </Modal>
-
-      {/* Modal para escolher o calendário */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={showCalendarModal}
-        onRequestClose={() => setShowCalendarModal(false)}
-      >
-        <View style={styles.calendarModalOverlay}>
-          <View style={styles.calendarModal}>
-          <View style={styles.modalTitle}>
-  <Text>Escolha o Calendário</Text>
-</View>
-
-
-            <TouchableOpacity
-              style={styles.calendarOption}
-              onPress={() => openCalendar("CalendarEvents")}
-            >
-              <Text style={styles.optionText}>Calendário de Eventos</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.calendarOption}
-              onPress={() => openCalendar("CalendarHolidays")}
-            >
-              <Text style={styles.optionText}>Calendário de Férias</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.calendarOption}
-              onPress={() => openCalendar("CalendarBirthdays")}
-            >
-              <Text style={styles.optionText}>Calendário de Aniversários</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={() => setShowCalendarModal(false)}
-            >
-              <Text style={styles.closeButtonText}>Fechar</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Botões inferiores */}
-      <View style={styles.footerButtons}>
-        <TouchableOpacity
-          onPress={() => console.log("Home")}
-          style={styles.iconContainer}
-        >
-          <Ionicons name="home-outline" size={24} color="black" />
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => setShowPostForm(true)}
-          style={styles.iconContainer}
-        >
-          <Ionicons name="add-circle-outline" size={34} color="black" />
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => setShowCalendarModal(true)}
-          style={styles.iconContainer}
-        >
-          <Ionicons name="calendar-outline" size={24} color="black" />
-        </TouchableOpacity>
-      </View>
-    </SafeAreaView>
-  );
-};
+        const FeedScreen: React.FC = () => {
+          const [showPostForm, setShowPostForm] = useState(false);
+          const [showCalendarModal, setShowCalendarModal] = useState(false);
+          const [tipoUsuario, setTipoUsuario] = useState<string | null>(null);
+          const navigation = useNavigation();
+        
+          useEffect(() => {
+            const fetchTipoUsuario = async () => {
+              const tipo = await AsyncStorage.getItem("tipoUsuario");
+              setTipoUsuario(tipo);
+            };
+            fetchTipoUsuario();
+          }, []);
+        
+          const openCalendar = (screen: string) => {
+            setShowCalendarModal(false);
+            navigation.navigate(screen as never); // Navega para a tela correspondente
+          };
+        
+          return (
+            <SafeAreaView style={styles.container}>
+              <Feed />
+        
+              {/* Modal para o formulário de postagem */}
+              <Modal
+                animationType="slide"
+                transparent={true}
+                visible={showPostForm}
+                onRequestClose={() => setShowPostForm(false)}
+              >
+                <View style={styles.modalContainer}>
+                  <PostForm onClose={() => setShowPostForm(false)} />
+                </View>
+              </Modal>
+        
+              {/* Modal para escolher o calendário */}
+              <Modal
+                animationType="fade"
+                transparent={true}
+                visible={showCalendarModal}
+                onRequestClose={() => setShowCalendarModal(false)}
+              >
+                <View style={styles.calendarModalOverlay}>
+                  <View style={styles.calendarModal}>
+                    <View style={styles.modalTitle}>
+                      <Text>Escolha o Calendário</Text>
+                    </View>
+        
+                    <TouchableOpacity
+                      style={styles.calendarOption}
+                      onPress={() => openCalendar("CalendarEvents")}
+                    >
+                      <Text style={styles.optionText}>Calendário de Eventos</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.calendarOption}
+                      onPress={() => openCalendar("CalendarHolidays")}
+                    >
+                      <Text style={styles.optionText}>Calendário de Férias</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.calendarOption}
+                      onPress={() => openCalendar("CalendarBirthdays")}
+                    >
+                      <Text style={styles.optionText}>Calendário de Aniversários</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.closeButton}
+                      onPress={() => setShowCalendarModal(false)}
+                    >
+                      <Text style={styles.closeButtonText}>Fechar</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </Modal>
+        
+              {/* Botões inferiores */}
+              <View style={styles.footerButtons}>
+                <TouchableOpacity
+                  onPress={() => console.log("Home")}
+                  style={styles.iconContainer}
+                >
+                  <Ionicons name="home-outline" size={24} color="black" />
+                </TouchableOpacity>
+                {tipoUsuario === "admin" && (
+                  <TouchableOpacity
+                    onPress={() => setShowPostForm(true)}
+                    style={styles.iconContainer}
+                  >
+                    <Ionicons name="add-circle-outline" size={34} color="black" />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  onPress={() => setShowCalendarModal(true)}
+                  style={styles.iconContainer}
+                >
+                  <Ionicons name="calendar-outline" size={24} color="black" />
+                </TouchableOpacity>
+              </View>
+            </SafeAreaView>
+          );
+        };
+        
 
 const styles = StyleSheet.create({
   container: {

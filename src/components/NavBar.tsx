@@ -108,7 +108,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderColor: '#0094FD',
     height: 67,
-    paddingBottom: 17,
+    paddingBottom: 10,
   },
   logo: {
     width: 150,
@@ -116,7 +116,7 @@ const styles = StyleSheet.create({
     resizeMode: 'contain',
     position: 'absolute', // Fixa a posição da logo
     left: 5,
-    bottom: 20
+    bottom: 15
   },
   rightSection: {
     flexDirection: 'row',
