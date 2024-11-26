@@ -1,5 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { View, Image, StyleSheet, TouchableOpacity, Text, Alert } from 'react-native';
+import {
+  View,
+  Image,
+  StyleSheet,
+  TouchableOpacity,
+  Text,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
@@ -11,7 +19,8 @@ type NavigationProps = NativeStackNavigationProp<RootStackParamList>;
 const Navbar: React.FC = () => {
   const [avatar, setAvatar] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
-  const [imageError, setImageError] = useState(false); // Indica erro no carregamento da imagem
+  const [imageError, setImageError] = useState(false);
+  const [loadingAvatar, setLoadingAvatar] = useState(true); // Loader para avatar
   const navigation = useNavigation<NavigationProps>();
 
   useEffect(() => {
@@ -34,7 +43,6 @@ const Navbar: React.FC = () => {
         const data = await response.json();
         console.log('Dados do usuário recebidos:', data);
 
-        // Validação da URL do avatar
         const isValidUrl = await validateImageUrl(data.avatar);
         if (isValidUrl) {
           setAvatar(data.avatar || null);
@@ -46,6 +54,8 @@ const Navbar: React.FC = () => {
         setUserName(data.usuario || 'Usuário');
       } catch (error) {
         console.error('Erro ao carregar dados do usuário:', error);
+      } finally {
+        setLoadingAvatar(false); // Finaliza o loader
       }
     };
 
@@ -54,7 +64,7 @@ const Navbar: React.FC = () => {
 
   const validateImageUrl = async (url: string): Promise<boolean> => {
     try {
-      const response = await fetch(url, { method: 'HEAD' }); // Verifica se a URL é acessível
+      const response = await fetch(url, { method: 'HEAD' });
       return response.ok;
     } catch (error) {
       console.error('Erro ao validar a URL da imagem:', error);
@@ -80,14 +90,18 @@ const Navbar: React.FC = () => {
     <View style={styles.container}>
       <Image source={require('../../assets/logo.png')} style={styles.logo} />
       <TouchableOpacity style={styles.rightSection} onPress={handleLogout}>
-        <Text style={styles.greetingText}>Olá, {userName}.</Text>
-        {avatar && !imageError ? (
+        <Text style={styles.greetingText}>Olá, {userName || 'Carregando...'}</Text>
+
+        {loadingAvatar ? (
+          // Skeleton enquanto o avatar está carregando
+          <View style={styles.skeletonAvatar} />
+        ) : avatar && !imageError ? (
           <Image
             source={{ uri: avatar }}
             style={styles.avatar}
             onError={() => {
               console.error('Erro ao carregar imagem do avatar');
-              setImageError(true); // Define o estado de erro
+              setImageError(true);
             }}
           />
         ) : (
@@ -114,14 +128,14 @@ const styles = StyleSheet.create({
     width: 150,
     height: 50,
     resizeMode: 'contain',
-    position: 'absolute', // Fixa a posição da logo
+    position: 'absolute',
     left: 5,
-    bottom: 15
+    bottom: 15,
   },
   rightSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: 'auto', // Empurra o conteúdo para a direita
+    marginLeft: 'auto',
   },
   greetingText: {
     fontSize: 15,
@@ -135,7 +149,12 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#0094FD',
   },
+  skeletonAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#E0E0E0',
+  },
 });
-
 
 export default Navbar;

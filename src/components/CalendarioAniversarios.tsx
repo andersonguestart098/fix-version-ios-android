@@ -1,66 +1,204 @@
-import React, { useState } from "react";
-import { View, Text, TextInput, Button, FlatList, StyleSheet } from "react-native";
+import React, { useState, useEffect } from "react";
+import {
+  View,
+  Text,
+  TextInput,
+  Button,
+  FlatList,
+  StyleSheet,
+  Alert,
+} from "react-native";
+import { Calendar, DateData } from "react-native-calendars";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import axios from "axios";
+
+interface Birthday {
+  id: string;
+  name: string;
+  date: string; // Formato ISO vindo do backend
+}
 
 const CalendarBirthdays: React.FC = () => {
+  const [birthdays, setBirthdays] = useState<Birthday[]>([]);
+  const [markedDates, setMarkedDates] = useState<Record<string, any>>({});
   const [name, setName] = useState("");
-  const [birthdate, setBirthdate] = useState("");
-  const [birthdays, setBirthdays] = useState<{ id: string; name: string; date: string }[]>([]);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
-  const handleAddBirthday = () => {
-    if (!name.trim() || !birthdate) return;
+  // Função para buscar aniversários do backend
+  const fetchBirthdays = async () => {
+    try {
+      const response = await axios.get(
+        "https://cemear-b549eb196d7c.herokuapp.com/aniversarios"
+      );
+      const data = response.data;
 
-    setBirthdays((prev) => [
-      ...prev,
-      { id: String(Date.now()), name, date: birthdate },
-    ]);
-    setName("");
-    setBirthdate("");
+      // Marca as datas de aniversários
+      const marked = data.reduce((acc: Record<string, any>, birthday: Birthday) => {
+        acc[birthday.date] = { marked: true, dotColor: "green" };
+        return acc;
+      }, {});
+
+      setBirthdays(data); // Define os aniversários no estado
+      setMarkedDates(marked); // Define as datas marcadas
+    } catch (error) {
+      console.error("Erro ao buscar aniversários:", error);
+      Alert.alert("Erro", "Não foi possível carregar os aniversários.");
+    }
   };
+
+  useEffect(() => {
+    fetchBirthdays(); // Busca aniversários ao montar o componente
+  }, []);
+
+  // Adicionar novo aniversário
+  const handleAddBirthday = async () => {
+    if (!name.trim()) {
+      Alert.alert("Erro", "Por favor, preencha o nome do aniversariante.");
+      return;
+    }
+
+    try {
+      const formattedDate = selectedDate.toISOString().split("T")[0];
+      const response = await axios.post(
+        "https://cemear-b549eb196d7c.herokuapp.com/birthdays",
+        {
+          name,
+          date: formattedDate,
+        }
+      );
+
+      // Atualiza aniversários localmente
+      const newBirthday = response.data;
+      setBirthdays((prev) => [...prev, newBirthday]);
+      setMarkedDates((prev) => ({
+        ...prev,
+        [newBirthday.date]: { marked: true, dotColor: "green" },
+      }));
+
+      setName(""); // Limpa o campo de nome
+      setSelectedDate(new Date()); // Reseta a data selecionada
+      Alert.alert("Sucesso", "Aniversário adicionado com sucesso!");
+    } catch (error) {
+      console.error("Erro ao adicionar aniversário:", error);
+      Alert.alert("Erro", "Não foi possível adicionar o aniversário.");
+    }
+  };
+
+  // Clique em uma data
+  const onDayPress = (day: DateData) => {
+    const birthday = birthdays.find((b) => b.date === day.dateString);
+    if (birthday) {
+      Alert.alert("Aniversário", `${birthday.name} faz aniversário!`);
+    } else {
+      Alert.alert("Sem aniversários", "Nenhum aniversário nesta data.");
+    }
+  };
+
+  // Filtrar aniversários do mês atual
+  const currentMonth = new Date().toISOString().split("T")[0].slice(0, 7);
+  const monthlyBirthdays = birthdays.filter((b) => b.date.startsWith(currentMonth));
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Calendário de Aniversários</Text>
+
+      {/* Calendário */}
+      <Calendar
+        onDayPress={onDayPress}
+        markedDates={markedDates}
+        theme={{
+          selectedDayBackgroundColor: "#007AFF",
+          todayTextColor: "#007AFF",
+          arrowColor: "#007AFF",
+        }}
+      />
+
+      {/* Inputs para adicionar novos aniversários */}
       <TextInput
         placeholder="Nome do Aniversariante"
         value={name}
         onChangeText={setName}
         style={styles.input}
       />
-      <TextInput
-        placeholder="Data de Aniversário (YYYY-MM-DD)"
-        value={birthdate}
-        onChangeText={setBirthdate}
-        style={styles.input}
-      />
+      <Button title="Selecionar Data" onPress={() => setShowDatePicker(true)} />
+      {showDatePicker && (
+        <DateTimePicker
+          value={selectedDate}
+          mode="date"
+          display="spinner"
+          onChange={(event, date) => {
+            setShowDatePicker(false);
+            if (date) setSelectedDate(date);
+          }}
+        />
+      )}
+      <Text style={styles.selectedDate}>
+        Data selecionada: {selectedDate.toLocaleDateString("pt-BR")}
+      </Text>
       <Button title="Adicionar Aniversário" onPress={handleAddBirthday} />
+
+      {/* Lista de aniversários do mês */}
+      <Text style={styles.subtitle}>Aniversários do Mês</Text>
       <FlatList
-        data={birthdays}
+        data={monthlyBirthdays}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <View style={styles.item}>
-            <Text>{item.name}</Text>
-            <Text>{item.date}</Text>
+          <View style={styles.eventItem}>
+            <Text style={styles.eventDescription}>{item.name}</Text>
+            <Text style={styles.eventDate}>
+              Data: {new Date(item.date).toLocaleDateString("pt-BR")}
+            </Text>
           </View>
         )}
-        style={styles.list}
       />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-    container: { padding: 16 },
-    title: { fontSize: 18, fontWeight: "bold", marginBottom: 10 },
-    input: {
-      borderWidth: 1,
-      borderColor: "#ccc",
-      borderRadius: 8,
-      padding: 8,
-      marginBottom: 10,
-    },
-    list: { marginTop: 10 },
-    item: { padding: 10, borderBottomWidth: 1, borderBottomColor: "#ccc" },
-  });
-  
+  container: {
+    flex: 1,
+    padding: 16,
+    backgroundColor: "white",
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: "bold",
+    marginBottom: 10,
+    textAlign: "center",
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 8,
+    padding: 8,
+    marginBottom: 10,
+  },
+  selectedDate: {
+    marginVertical: 10,
+    fontSize: 16,
+  },
+  subtitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    marginTop: 20,
+  },
+  eventItem: {
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 8,
+    padding: 10,
+    marginVertical: 5,
+  },
+  eventDescription: {
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  eventDate: {
+    fontSize: 14,
+    color: "#555",
+  },
+});
 
 export default CalendarBirthdays;

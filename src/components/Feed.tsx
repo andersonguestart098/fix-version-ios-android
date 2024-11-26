@@ -7,6 +7,7 @@ import {
   Image,
   TouchableOpacity,
   ActivityIndicator,
+  Modal,
 } from "react-native";
 import axios from "axios";
 import io from "socket.io-client";
@@ -33,7 +34,6 @@ type PostType = {
   } | null;
 };
 
-// Configuração do Axios para incluir o token automaticamente
 axios.interceptors.request.use(async (config) => {
   const token = await AsyncStorage.getItem("token");
   if (token) {
@@ -42,11 +42,23 @@ axios.interceptors.request.use(async (config) => {
   return config;
 });
 
+const SkeletonLoader = () => (
+  <View style={styles.skeletonContainer}>
+    {[...Array(5)].map((_, index) => (
+      <View key={index} style={styles.skeletonPost}>
+        <View style={styles.skeletonAvatar} />
+        <View style={styles.skeletonText} />
+        <View style={styles.skeletonImage} />
+      </View>
+    ))}
+  </View>
+);
+
 const Feed: React.FC = () => {
   const [posts, setPosts] = useState<PostType[]>([]);
   const [loading, setLoading] = useState(true);
-  const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   const fetchPosts = async () => {
     try {
@@ -102,9 +114,6 @@ const Feed: React.FC = () => {
       );
     } catch (error) {
       console.error("Erro ao registrar reação:", error);
-      if (axios.isAxiosError(error) && error.response?.status === 401) {
-        console.error("Erro de autenticação. Verifique seu token.");
-      }
     }
   };
 
@@ -127,23 +136,33 @@ const Feed: React.FC = () => {
       setPosts((prevPosts) =>
         prevPosts.map((post) =>
           post.id === postId
-            ? { ...post, comments: { length: post.comments.length + 1 } }
+            ? { ...post, comments: { length: (post.comments?.length || 0) + 1 } }
             : post
         )
       );
     });
 
+    socket.on("new-post", (newPost: PostType) => {
+      setPosts((prevPosts) => [newPost, ...prevPosts]);
+    });
+
     return () => {
       socket.off("post-reaction-updated");
       socket.off("comment-added");
-      socket.disconnect();
+      socket.off("new-post");
     };
   }, []);
 
+  const openImageFullScreen = (imageUri: string) => {
+    setSelectedImage(imageUri);
+  };
+
+  const closeImageFullScreen = () => {
+    setSelectedImage(null);
+  };
+
   const renderPost = ({ item }: { item: PostType }) => {
-    const avatarUri = imageErrors[item.id]
-      ? "https://via.placeholder.com/50"
-      : item.user?.avatar || "https://via.placeholder.com/50";
+    const avatarUri = item.user?.avatar || "https://via.placeholder.com/50";
 
     return (
       <View style={styles.postContainer}>
@@ -151,11 +170,17 @@ const Feed: React.FC = () => {
           <Image
             source={{ uri: avatarUri }}
             style={styles.avatar}
-            onError={() => setImageErrors((prev) => ({ ...prev, [item.id]: true }))}
+            onError={() => console.error("Erro ao carregar avatar")}
           />
           <Text style={styles.username}>{item.user?.usuario || "Usuário Anônimo"}</Text>
         </View>
-        {item.imagePath && <Image source={{ uri: item.imagePath }} style={styles.postImage} />}
+
+        {item.imagePath && (
+          <TouchableOpacity onPress={() => openImageFullScreen(item.imagePath)}>
+            <Image source={{ uri: item.imagePath }} style={styles.postImage} />
+          </TouchableOpacity>
+        )}
+
         <Text style={styles.caption}>{item.titulo}</Text>
         <Text style={styles.content}>{item.conteudo}</Text>
 
@@ -168,7 +193,9 @@ const Feed: React.FC = () => {
             <Ionicons name="heart-outline" size={24} color="red" />
             <Text>{item.reactions?.like || 0}</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate("Comments", { postId: item.id })}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate("Comments", { postId: item.id })}
+          >
             <Ionicons name="chatbubble-outline" size={24} color="blue" />
             <Text>{item.comments?.length || 0}</Text>
           </TouchableOpacity>
@@ -180,9 +207,17 @@ const Feed: React.FC = () => {
   return (
     <View style={styles.container}>
       {loading ? (
-        <ActivityIndicator style={styles.loader} size="large" color="#0000ff" />
+        <SkeletonLoader />
       ) : (
         <FlatList data={posts} renderItem={renderPost} keyExtractor={(item) => item.id} />
+      )}
+
+      {selectedImage && (
+        <Modal visible={true} transparent={true} animationType="none">
+          <TouchableOpacity style={styles.fullScreenImageContainer} onPress={closeImageFullScreen}>
+            <Image source={{ uri: selectedImage }} style={styles.fullScreenImage} />
+          </TouchableOpacity>
+        </Modal>
       )}
     </View>
   );
@@ -245,10 +280,44 @@ const styles = StyleSheet.create({
     justifyContent: "space-around",
     marginTop: 10,
   },
-  loader: {
+  skeletonContainer: {
+    padding: 10,
+  },
+  skeletonPost: {
+    backgroundColor: "#E0E0E0",
+    borderRadius: 10,
+    marginBottom: 15,
+    padding: 10,
+  },
+  skeletonAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#C0C0C0",
+    marginBottom: 10,
+  },
+  skeletonText: {
+    height: 20,
+    width: "60%",
+    backgroundColor: "#C0C0C0",
+    borderRadius: 5,
+    marginBottom: 10,
+  },
+  skeletonImage: {
+    height: 200,
+    backgroundColor: "#C0C0C0",
+    borderRadius: 10,
+  },
+  fullScreenImageContainer: {
     flex: 1,
+    backgroundColor: "black",
     justifyContent: "center",
     alignItems: "center",
+  },
+  fullScreenImage: {
+    width: "100%",
+    height: "100%",
+    resizeMode: "contain",
   },
 });
 

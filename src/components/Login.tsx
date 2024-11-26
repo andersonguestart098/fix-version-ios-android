@@ -9,7 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
-  Text, // Certifique-se de importar Text
+  Text,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation } from "@react-navigation/native";
@@ -67,10 +67,25 @@ const Login: React.FC = () => {
         routes: [{ name: "Feed" as never }],
       });
     } catch (error: any) {
-      Alert.alert(
-        "Erro",
-        error.response?.data?.msg || "Falha no login. Verifique suas credenciais."
-      );
+      if (axios.isAxiosError(error)) {
+        // Trata erros específicos de status
+        switch (error.response?.status) {
+          case 400:
+            Alert.alert("Erro", "Credenciais inválidas");
+            break;
+          case 401:
+            Alert.alert("Erro", "Credenciais inválidas");
+            break;
+          default:
+            Alert.alert(
+              "Erro",
+              error.response?.data?.msg || "Falha no login. Tente novamente."
+            );
+            break;
+        }
+      } else {
+        Alert.alert("Erro", "Ocorreu um erro inesperado. Tente novamente.");
+      }
     } finally {
       setLoading(false);
     }
@@ -130,7 +145,7 @@ const Login: React.FC = () => {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={styles.container}
     >
-    <Image source={require('../../assets/logo.png')} style={styles.logo} />
+      <Image source={require("../../assets/logo.png")} style={styles.logo} />
 
       <TextInput
         style={styles.input}
@@ -170,8 +185,8 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   logo: {
-    width: 160,
-    height: 40,
+    width: 135,
+    height: 25,
     marginBottom: 30,
   },
   input: {

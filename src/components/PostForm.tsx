@@ -114,52 +114,49 @@ const PostForm: React.FC<PostFormProps> = ({ onClose }) => {
   };
 
   return (
-    <TouchableWithoutFeedback
-      onPress={() => {
-        Keyboard.dismiss(); // Fecha o teclado ao tocar fora
-      }}
-    >
-      <View style={styles.modalOverlay}>
-        <TouchableWithoutFeedback>
-          <View style={[styles.container, { width: width * 0.9 }]}>
-            <Text style={styles.title}>Novo Post</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Título"
-              value={titulo}
-              onChangeText={setTitulo}
-            />
-            <TextInput
-              style={[styles.input, styles.textArea]}
-              placeholder="Conteúdo"
-              value={conteudo}
-              onChangeText={setConteudo}
-              multiline
-              returnKeyType="done"
-              blurOnSubmit
-              onSubmitEditing={() => Keyboard.dismiss()}
-            />
-            {anexo && <Image source={{ uri: anexo }} style={styles.imagePreview} />}
-            <TouchableOpacity style={styles.button} onPress={handleImagePicker}>
-              <Text style={styles.buttonText}>Anexar Imagem</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.button, styles.submitButton]}
-              onPress={handleSubmit}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator size="small" color="#FFF" />
-              ) : (
-                <Text style={[styles.buttonText, { color: 'white' }]}>
-                  Enviar
-                </Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        </TouchableWithoutFeedback>
-      </View>
-    </TouchableWithoutFeedback>
+    <TouchableWithoutFeedback onPress={onClose}>
+    <View style={styles.modalOverlay}>
+      <TouchableWithoutFeedback>
+        <View style={[styles.container, { width: width * 0.9 }]}>
+          <Text style={styles.title}>Novo Post</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Título"
+            value={titulo}
+            onChangeText={setTitulo}
+          />
+          <TextInput
+            style={[styles.input, styles.textArea]}
+            placeholder="Conteúdo"
+            value={conteudo}
+            onChangeText={setConteudo}
+            multiline
+            returnKeyType="done"
+            blurOnSubmit
+            onSubmitEditing={() => Keyboard.dismiss()}
+          />
+          {anexo && <Image source={{ uri: anexo }} style={styles.imagePreview} />}
+          <TouchableOpacity style={styles.button} onPress={handleImagePicker}>
+            <Text style={styles.buttonText}>Anexar Imagem</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.button, styles.submitButton]}
+            onPress={handleSubmit}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color="#FFF" />
+            ) : (
+              <Text style={[styles.buttonText, { color: 'white' }]}>
+                Enviar
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </TouchableWithoutFeedback>
+    </View>
+  </TouchableWithoutFeedback>
+  
   );
 };
 

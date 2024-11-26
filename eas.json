@@ -1,9 +1,12 @@
 {
-    "build": {
-      "production": {
-        "developmentClient": false,
-        "distribution": "store"
-      }
+  "build": {
+    "production": {
+      "developmentClient": false,
+      "distribution": "store",
+      "autoIncrement": true
     }
+  },
+  "cli": {
+    "appVersionSource": "remote"
   }
-  
+}
