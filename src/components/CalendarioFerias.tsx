@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { View, Text, TextInput, Button, FlatList, StyleSheet, Alert } from "react-native";
 import { Calendar, DateData } from "react-native-calendars";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 
 interface Ferias {
@@ -19,6 +20,7 @@ const CalendarHolidays: React.FC = () => {
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
+  const [tipoUsuario, setTipoUsuario] = useState<string | null>(null);
 
   // Função para buscar férias do backend
   const fetchFerias = async () => {
@@ -50,6 +52,13 @@ const CalendarHolidays: React.FC = () => {
 
   useEffect(() => {
     fetchFerias();
+
+    const fetchTipoUsuario = async () => {
+      const tipo = await AsyncStorage.getItem("tipoUsuario");
+      setTipoUsuario(tipo);
+    };
+
+    fetchTipoUsuario();
   }, []);
 
   // Adicionar novas férias
@@ -131,44 +140,48 @@ const CalendarHolidays: React.FC = () => {
         }}
       />
 
-      {/* Inputs para adicionar férias */}
-      <TextInput
-        placeholder="Nome do Colaborador"
-        value={employee}
-        onChangeText={setEmployee}
-        style={styles.input}
-      />
-      <Button title="Selecionar Data de Início" onPress={() => setShowStartPicker(true)} />
-      {showStartPicker && (
-        <DateTimePicker
-          value={startDate || new Date()}
-          mode="date"
-          display="spinner"
-          onChange={(event, date) => {
-            setShowStartPicker(false);
-            if (date) setStartDate(date);
-          }}
-        />
+      {/* Inputs para adicionar férias (somente para admin) */}
+      {tipoUsuario === "admin" && (
+        <>
+          <TextInput
+            placeholder="Nome do Colaborador"
+            value={employee}
+            onChangeText={setEmployee}
+            style={styles.input}
+          />
+          <Button title="Selecionar Data de Início" onPress={() => setShowStartPicker(true)} />
+          {showStartPicker && (
+            <DateTimePicker
+              value={startDate || new Date()}
+              mode="date"
+              display="spinner"
+              onChange={(event, date) => {
+                setShowStartPicker(false);
+                if (date) setStartDate(date);
+              }}
+            />
+          )}
+          <Text style={styles.selectedDate}>
+            Data de Início: {startDate?.toLocaleDateString("pt-BR") || "Não selecionada"}
+          </Text>
+          <Button title="Selecionar Data de Término" onPress={() => setShowEndPicker(true)} />
+          {showEndPicker && (
+            <DateTimePicker
+              value={endDate || new Date()}
+              mode="date"
+              display="spinner"
+              onChange={(event, date) => {
+                setShowEndPicker(false);
+                if (date) setEndDate(date);
+              }}
+            />
+          )}
+          <Text style={styles.selectedDate}>
+            Data de Término: {endDate?.toLocaleDateString("pt-BR") || "Não selecionada"}
+          </Text>
+          <Button title="Adicionar Férias" onPress={handleAddFerias} />
+        </>
       )}
-      <Text style={styles.selectedDate}>
-        Data de Início: {startDate?.toLocaleDateString("pt-BR") || "Não selecionada"}
-      </Text>
-      <Button title="Selecionar Data de Término" onPress={() => setShowEndPicker(true)} />
-      {showEndPicker && (
-        <DateTimePicker
-          value={endDate || new Date()}
-          mode="date"
-          display="spinner"
-          onChange={(event, date) => {
-            setShowEndPicker(false);
-            if (date) setEndDate(date);
-          }}
-        />
-      )}
-      <Text style={styles.selectedDate}>
-        Data de Término: {endDate?.toLocaleDateString("pt-BR") || "Não selecionada"}
-      </Text>
-      <Button title="Adicionar Férias" onPress={handleAddFerias} />
 
       {/* Lista de férias do mês */}
       <Text style={styles.subtitle}>Férias do Mês</Text>
@@ -206,7 +219,7 @@ const styles = StyleSheet.create({
     borderColor: "#ccc",
     borderRadius: 8,
     padding: 8,
-    marginBottom: 2,
+    marginBottom: 10,
   },
   selectedDate: {
     marginVertical: 10,
@@ -215,13 +228,13 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 18,
     fontWeight: "bold",
-    marginTop: 16,
+    marginTop: 20,
   },
   eventItem: {
     borderWidth: 1,
     borderColor: "#ccc",
     borderRadius: 8,
-    padding: 5,
+    padding: 10,
     marginVertical: 5,
   },
   eventDescription: {

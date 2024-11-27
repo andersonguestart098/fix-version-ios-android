@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Calendar, DateData } from "react-native-calendars";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 
 interface Birthday {
@@ -24,6 +25,7 @@ const CalendarBirthdays: React.FC = () => {
   const [name, setName] = useState("");
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [tipoUsuario, setTipoUsuario] = useState<string | null>(null);
 
   // Função para buscar aniversários do backend
   const fetchBirthdays = async () => {
@@ -49,6 +51,13 @@ const CalendarBirthdays: React.FC = () => {
 
   useEffect(() => {
     fetchBirthdays(); // Busca aniversários ao montar o componente
+
+    const fetchTipoUsuario = async () => {
+      const tipo = await AsyncStorage.getItem("tipoUsuario");
+      setTipoUsuario(tipo);
+    };
+
+    fetchTipoUsuario();
   }, []);
 
   // Adicionar novo aniversário
@@ -114,29 +123,33 @@ const CalendarBirthdays: React.FC = () => {
         }}
       />
 
-      {/* Inputs para adicionar novos aniversários */}
-      <TextInput
-        placeholder="Nome do Aniversariante"
-        value={name}
-        onChangeText={setName}
-        style={styles.input}
-      />
-      <Button title="Selecionar Data" onPress={() => setShowDatePicker(true)} />
-      {showDatePicker && (
-        <DateTimePicker
-          value={selectedDate}
-          mode="date"
-          display="spinner"
-          onChange={(event, date) => {
-            setShowDatePicker(false);
-            if (date) setSelectedDate(date);
-          }}
-        />
+      {/* Inputs para adicionar novos aniversários (apenas admin) */}
+      {tipoUsuario === "admin" && (
+        <>
+          <TextInput
+            placeholder="Nome do Aniversariante"
+            value={name}
+            onChangeText={setName}
+            style={styles.input}
+          />
+          <Button title="Selecionar Data" onPress={() => setShowDatePicker(true)} />
+          {showDatePicker && (
+            <DateTimePicker
+              value={selectedDate}
+              mode="date"
+              display="spinner"
+              onChange={(event, date) => {
+                setShowDatePicker(false);
+                if (date) setSelectedDate(date);
+              }}
+            />
+          )}
+          <Text style={styles.selectedDate}>
+            Data selecionada: {selectedDate.toLocaleDateString("pt-BR")}
+          </Text>
+          <Button title="Adicionar Aniversário" onPress={handleAddBirthday} />
+        </>
       )}
-      <Text style={styles.selectedDate}>
-        Data selecionada: {selectedDate.toLocaleDateString("pt-BR")}
-      </Text>
-      <Button title="Adicionar Aniversário" onPress={handleAddBirthday} />
 
       {/* Lista de aniversários do mês */}
       <Text style={styles.subtitle}>Aniversários do Mês</Text>

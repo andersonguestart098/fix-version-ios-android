@@ -15,7 +15,7 @@
     "supportsTablet": true,
     "bundleIdentifier": "com.theanderson98.CemearApp",
     "icon": "./assets/icon.png",
-    "buildNumber": "6",
+    "buildNumber": "8",
     "infoPlist": {
       "UIBackgroundModes": ["remote-notification"],
       "UIApplicationShortcutItems": [],
@@ -29,7 +29,7 @@
       "backgroundColor": "#ffffff"
     },
     "package": "com.theanderson98.CemearApp",
-    "versionCode": 5
+    "versionCode": 8
   },
   "web": {
     "favicon": "./assets/icon.png"

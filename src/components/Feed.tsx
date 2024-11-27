@@ -170,7 +170,6 @@ const Feed: React.FC = () => {
           <Image
             source={{ uri: avatarUri }}
             style={styles.avatar}
-            onError={() => console.error("Erro ao carregar avatar")}
           />
           <Text style={styles.username}>{item.user?.usuario || "Usuário Anônimo"}</Text>
         </View>

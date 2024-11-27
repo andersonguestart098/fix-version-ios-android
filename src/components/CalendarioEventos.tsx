@@ -1,7 +1,16 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, TextInput, Button, FlatList, StyleSheet, Alert } from "react-native";
+import {
+  View,
+  Text,
+  TextInput,
+  Button,
+  FlatList,
+  StyleSheet,
+  Alert,
+} from "react-native";
 import { Calendar, DateData } from "react-native-calendars";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 
 interface Event {
@@ -16,11 +25,14 @@ const CalendarEvents: React.FC = () => {
   const [descricao, setDescricao] = useState("");
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [tipoUsuario, setTipoUsuario] = useState<string | null>(null);
 
   // Função para buscar eventos do backend
   const fetchEvents = async () => {
     try {
-      const response = await axios.get("https://cemear-b549eb196d7c.herokuapp.com/events");
+      const response = await axios.get(
+        "https://cemear-b549eb196d7c.herokuapp.com/events"
+      );
       const data = response.data;
 
       // Marca as datas dos eventos
@@ -39,6 +51,13 @@ const CalendarEvents: React.FC = () => {
 
   useEffect(() => {
     fetchEvents(); // Busca eventos ao montar o componente
+
+    const fetchTipoUsuario = async () => {
+      const tipo = await AsyncStorage.getItem("tipoUsuario");
+      setTipoUsuario(tipo);
+    };
+
+    fetchTipoUsuario();
   }, []);
 
   // Adicionar novo evento
@@ -50,10 +69,13 @@ const CalendarEvents: React.FC = () => {
 
     try {
       const formattedDate = selectedDate.toISOString().split("T")[0];
-      const response = await axios.post("https://cemear-b549eb196d7c.herokuapp.com/events", {
-        descricao,
-        date: formattedDate,
-      });
+      const response = await axios.post(
+        "https://cemear-b549eb196d7c.herokuapp.com/events",
+        {
+          descricao,
+          date: formattedDate,
+        }
+      );
 
       // Atualiza eventos localmente
       const newEvent = response.data;
@@ -101,29 +123,33 @@ const CalendarEvents: React.FC = () => {
         }}
       />
 
-      {/* Inputs para adicionar novos eventos */}
-      <TextInput
-        placeholder="Descrição do evento"
-        value={descricao}
-        onChangeText={setDescricao}
-        style={styles.input}
-      />
-      <Button title="Selecionar Data" onPress={() => setShowDatePicker(true)} />
-      {showDatePicker && (
-        <DateTimePicker
-          value={selectedDate}
-          mode="date"
-          display="spinner" // Estilo "roleta" no iOS
-          onChange={(event, date) => {
-            setShowDatePicker(false);
-            if (date) setSelectedDate(date);
-          }}
-        />
+      {/* Inputs para adicionar novos eventos (somente para admin) */}
+      {tipoUsuario === "admin" && (
+        <>
+          <TextInput
+            placeholder="Descrição do evento"
+            value={descricao}
+            onChangeText={setDescricao}
+            style={styles.input}
+          />
+          <Button title="Selecionar Data" onPress={() => setShowDatePicker(true)} />
+          {showDatePicker && (
+            <DateTimePicker
+              value={selectedDate}
+              mode="date"
+              display="spinner" // Estilo "roleta" no iOS
+              onChange={(event, date) => {
+                setShowDatePicker(false);
+                if (date) setSelectedDate(date);
+              }}
+            />
+          )}
+          <Text style={styles.selectedDate}>
+            Data selecionada: {selectedDate.toLocaleDateString("pt-BR")}
+          </Text>
+          <Button title="Adicionar Evento" onPress={handleAddEvent} />
+        </>
       )}
-      <Text style={styles.selectedDate}>
-        Data selecionada: {selectedDate.toLocaleDateString("pt-BR")}
-      </Text>
-      <Button title="Adicionar Evento" onPress={handleAddEvent} />
 
       {/* Lista de eventos do mês */}
       <Text style={styles.subtitle}>Eventos do Mês</Text>

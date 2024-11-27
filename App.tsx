@@ -1,40 +1,22 @@
 import React, { useEffect, useState } from "react";
-import {
-  SafeAreaView,
-  StyleSheet,
-  View,
-  ActivityIndicator,
-  Alert,
-  Modal,
-  TouchableOpacity,
-  Platform,
-  TouchableWithoutFeedback,
-} from "react-native";
-import Feed from "./src/components/Feed";
-import PostForm from "./src/components/PostForm";
-import Login from "./src/components/Login";
-import ReactionList from "./src/screens/Reacoes";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { NavigationContainer, useNavigation } from "@react-navigation/native";
+import { SafeAreaView, StyleSheet, ActivityIndicator } from "react-native";
+import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { Ionicons } from "@expo/vector-icons";
 import * as Font from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 import * as Notifications from "expo-notifications";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import FeedScreen from "./src/screens/FeedScreen";
+import Login from "./src/components/Login";
+import ReactionList from "./src/screens/Reacoes";
 import CommentsScreen from "./src/screens/Comments";
-import { RootStackParamList } from "./src/types";
-import { enableScreens } from "react-native-screens";
-import MainLayout from "./src/screens/MainLayout"; // O layout com o Navbar
 import CalendarEvents from "./src/components/CalendarioEventos";
 import CalendarHolidays from "./src/components/CalendarioFerias";
 import CalendarBirthdays from "./src/components/CalendarioAniversarios";
-import { Text} from "react-native";
+import Navbar from "./src/components/NavBar";
 import { AppState } from "react-native";
+import { RootStackParamList } from "./src/types";
 
-import * as Device from "expo-device";
-
-
-enableScreens();
 SplashScreen.preventAutoHideAsync();
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -47,7 +29,6 @@ Notifications.setNotificationHandler({
   }),
 });
 
-
 const App: React.FC = () => {
   const [fontsLoaded, setFontsLoaded] = useState(false);
   const [initialRoute, setInitialRoute] = useState<"Login" | "Feed">("Login");
@@ -55,8 +36,6 @@ const App: React.FC = () => {
 
   useEffect(() => {
     loadFontsAndAuth();
-    setupNotificationListeners();
-
     const appStateListener = AppState.addEventListener("change", handleAppStateChange);
 
     return () => {
@@ -66,15 +45,16 @@ const App: React.FC = () => {
 
   const loadFontsAndAuth = async () => {
     try {
-      console.log("Carregando fontes e autenticação...");
       await Font.loadAsync({
         Ionicons: require("@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf"),
       });
 
       const token = await AsyncStorage.getItem("token");
       setInitialRoute(token ? "Feed" : "Login");
-      console.log(`Token de autenticação encontrado: ${token ? "Sim" : "Não"}`);
       setFontsLoaded(true);
+
+      // Reseta o badge ao carregar o app
+      await resetBadgeAndMarkAsRead(token);
     } catch (error) {
       console.error("Erro ao carregar fontes ou autenticação:", error);
     } finally {
@@ -83,331 +63,130 @@ const App: React.FC = () => {
     }
   };
 
-  const setupNotificationListeners = async () => {
-    try {
-      console.log("Configurando listeners de notificações...");
-      const { status: existingStatus } = await Notifications.getPermissionsAsync();
-      let finalStatus = existingStatus;
-
-      if (existingStatus !== "granted") {
-        const { status } = await Notifications.requestPermissionsAsync();
-        finalStatus = status;
-      }
-
-      if (finalStatus !== "granted") {
-        console.warn("Permissões de notificação não concedidas.");
-        return;
-      }
-
-      console.log("Permissões de notificação concedidas.");
-
-      const { data: expoPushToken } = await Notifications.getExpoPushTokenAsync({
-        projectId: "ecf65d93-030d-40c4-9c90-1bc55efa9eaf",
-      });
-      console.log("Token Expo Push obtido:", expoPushToken);
-
-      Notifications.addNotificationReceivedListener(async (notification) => {
-        console.log("Notificação recebida:", notification);
-
-        const badgeCount = notification.request.content.badge || 0;
-        await Notifications.setBadgeCountAsync(badgeCount);
-        console.log(`Badge atualizado para ${badgeCount}`);
-      });
-
-      Notifications.addNotificationResponseReceivedListener(async (response) => {
-        console.log("Notificação interagida:", response);
-
-        await markNotificationsAsRead();
-        await updateBadgeCount();
-      });
-
-      await updateBadgeCount();
-    } catch (error) {
-      console.error("Erro ao configurar notificações:", error);
-    }
-  };
-
   const handleAppStateChange = async (nextAppState: string) => {
     if (nextAppState === "active") {
-      console.log("App voltou para o estado ativo. Resetando o badge...");
-      await resetBadgeCountOnAppOpen();
+      console.log("Aplicativo ativo, resetando badge...");
+      const token = await AsyncStorage.getItem("token");
+      await resetBadgeAndMarkAsRead(token);
     }
   };
 
-  const resetBadgeCountOnAppOpen = async () => {
+  const resetBadgeAndMarkAsRead = async (token: string | null) => {
     try {
-      console.log("Resetando o badge ao abrir o aplicativo...");
-      const userId = await AsyncStorage.getItem("userId");
-
-      // Sempre reseta o badge localmente
-      await Notifications.setBadgeCountAsync(0);
-      console.log("Badge no dispositivo resetado para 0.");
-
-      if (!userId) {
-        console.warn("Usuário não autenticado. Pulando a marcação de notificações como lidas no backend.");
-        return;
-      }
-
-      const response = await fetch(
-        "https://cemear-b549eb196d7c.herokuapp.com/notifications/mark-as-read",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ userId }),
+      await Notifications.setBadgeCountAsync(0); // Reseta o badge local
+      console.log("Badge resetado com sucesso.");
+  
+      // Se o usuário está logado, usa o userId
+      if (token) {
+        const userId = await AsyncStorage.getItem("userId");
+        if (!userId) {
+          console.warn("Usuário não autenticado. Não é possível marcar notificações como lidas.");
+          return;
         }
-      );
-
-      if (response.ok) {
-        console.log("Notificações marcadas como lidas no backend com sucesso.");
+  
+        const response = await fetch(
+          "https://cemear-b549eb196d7c.herokuapp.com/notifications/mark-as-read",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ userId }),
+          }
+        );
+  
+        if (response.ok) {
+          console.log("Notificações marcadas como lidas no backend (usuário autenticado).");
+        } else {
+          const errorDetails = await response.json();
+          console.error(
+            "Erro ao marcar notificações como lidas no backend (usuário autenticado):",
+            errorDetails
+          );
+        }
       } else {
-        console.error("Erro ao marcar notificações como lidas no backend:", response.statusText);
+        console.log("Usuário deslogado. Nenhuma ação necessária para notificações.");
       }
     } catch (error) {
       console.error("Erro ao resetar badge ou marcar notificações como lidas:", error);
     }
   };
-
-  const markNotificationsAsRead = async () => {
-    try {
-      console.log("Marcando notificações como lidas...");
-      const userId = await AsyncStorage.getItem("userId");
-
-      if (!userId) {
-        console.warn("Usuário não autenticado. Não é possível marcar notificações como lidas.");
-        return;
-      }
-
-      const response = await fetch(
-        "https://cemear-b549eb196d7c.herokuapp.com/notifications/mark-as-read",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ userId }),
-        }
-      );
-
-      if (response.ok) {
-        console.log("Notificações marcadas como lidas no backend.");
-      } else {
-        console.error("Erro ao marcar notificações como lidas no backend.");
-      }
-    } catch (error) {
-      console.error("Erro ao marcar notificações como lidas:", error);
-    }
-  };
-
-  const updateBadgeCount = async () => {
-    try {
-      console.log("Atualizando o badge count...");
-      const userId = await AsyncStorage.getItem("userId");
-
-      if (!userId) {
-        console.warn("Usuário não autenticado. Não é possível atualizar o badge.");
-        await Notifications.setBadgeCountAsync(0);
-        return;
-      }
-
-      const response = await fetch(
-        `https://cemear-b549eb196d7c.herokuapp.com/notifications/unread-count/${userId}`
-      );
-      const data = await response.json();
-
-      const unreadCount = data.unreadCount || 0;
-      console.log(`Número de notificações não lidas: ${unreadCount}`);
-
-      await Notifications.setBadgeCountAsync(unreadCount);
-    } catch (error) {
-      console.error("Erro ao buscar notificações não lidas:", error);
-    }
-  };
-
+  
+  
+  
 
   if (!fontsLoaded || loadingAuth) {
-    return <ActivityIndicator style={{ flex: 1 }} size="large" />;
+    return <ActivityIndicator style={styles.loading} size="large" />;
   }
 
   return (
     <NavigationContainer>
-      <Stack.Navigator
-        initialRouteName={initialRoute}
-        screenOptions={{ headerShown: false, gestureEnabled: true }}
-      >
-        <Stack.Screen name="Login" component={Login} />
-        <Stack.Screen name="Feed">
-          {() => (
-            <MainLayout>
-              <Feed />
-            </MainLayout>
-          )}
-        </Stack.Screen>
-        <Stack.Screen name="Comments">
-          {() => (
-            <MainLayout>
-              <CommentsScreen />
-            </MainLayout>
-          )}
-        </Stack.Screen>
-        <Stack.Screen name="ReactionList">
-          {() => (
-            <MainLayout>
-              <ReactionList />
-            </MainLayout>
-          )}
-        </Stack.Screen>
-        <Stack.Screen name="CalendarHolidays">
-          {() => (
-            <MainLayout>
-              <CalendarHolidays />
-            </MainLayout>
-          )}
-        </Stack.Screen>
-        <Stack.Screen name="CalendarEvents">
-          {() => (
-            <MainLayout>
-              <CalendarEvents />
-            </MainLayout>
-          )}
-        </Stack.Screen>
-        <Stack.Screen name="CalendarBirthdays">
-          {() => (
-            <MainLayout>
-              <CalendarBirthdays />
-            </MainLayout>
-          )}
-        </Stack.Screen>
-      </Stack.Navigator>
+      <SafeAreaView style={styles.container}>
+        <Stack.Navigator
+          initialRouteName={initialRoute}
+          screenOptions={{
+            headerShown: false,
+          }}
+        >
+          {/* Tela de Login sem Navbar */}
+          <Stack.Screen name="Login" component={Login} />
+
+          {/* Feed com Navbar */}
+          <Stack.Screen name="Feed">
+            {() => (
+              <SafeAreaView style={styles.container}>
+                
+                <FeedScreen />
+              </SafeAreaView>
+            )}
+          </Stack.Screen>
+
+          {/* Outras Telas com Navbar */}
+          <Stack.Screen name="ReactionList">
+            {() => (
+              <SafeAreaView style={styles.container}>
+                <Navbar />
+                <ReactionList />
+              </SafeAreaView>
+            )}
+          </Stack.Screen>
+          <Stack.Screen name="Comments">
+            {() => (
+              <SafeAreaView style={styles.container}>
+                <Navbar />
+                <CommentsScreen />
+              </SafeAreaView>
+            )}
+          </Stack.Screen>
+          <Stack.Screen name="CalendarHolidays">
+            {() => (
+              <SafeAreaView style={styles.container}>
+                <Navbar />
+                <CalendarHolidays />
+              </SafeAreaView>
+            )}
+          </Stack.Screen>
+          <Stack.Screen name="CalendarEvents">
+            {() => (
+              <SafeAreaView style={styles.container}>
+                <Navbar />
+                <CalendarEvents />
+              </SafeAreaView>
+            )}
+          </Stack.Screen>
+          <Stack.Screen name="CalendarBirthdays">
+            {() => (
+              <SafeAreaView style={styles.container}>
+                <Navbar />
+                <CalendarBirthdays />
+              </SafeAreaView>
+            )}
+          </Stack.Screen>
+        </Stack.Navigator>
+      </SafeAreaView>
     </NavigationContainer>
   );
 };
-
-        const FeedScreen: React.FC = () => {
-          const [showPostForm, setShowPostForm] = useState(false);
-          const [showCalendarModal, setShowCalendarModal] = useState(false);
-          const [tipoUsuario, setTipoUsuario] = useState<string | null>(null);
-          const navigation = useNavigation();
-        
-          useEffect(() => {
-            const fetchTipoUsuario = async () => {
-              const tipo = await AsyncStorage.getItem("tipoUsuario");
-              setTipoUsuario(tipo);
-            };
-            fetchTipoUsuario();
-          }, []);
-        
-          const openCalendar = (screen: string) => {
-            setShowCalendarModal(false);
-            navigation.navigate(screen as never); // Navega para a tela correspondente
-          };
-
-          useEffect(() => {
-            const resetBadgeCount = async () => {
-              console.log("Resetando badge count...");
-              await Notifications.setBadgeCountAsync(0); // Zera o badge
-            };
-          
-            resetBadgeCount(); // Chama a função ao carregar o Feed
-          }, []);
-          
-        
-          return (
-            <SafeAreaView style={styles.container}>
-              <Feed />
-        
-              {/* Modal para o formulário de postagem */}
-              <Modal
-                animationType="slide"
-                transparent={true}
-                visible={showPostForm}
-                onRequestClose={() => setShowPostForm(false)}
-              >
-                <View style={styles.modalContainer}>
-                  <PostForm onClose={() => setShowPostForm(false)} />
-                </View>
-              </Modal>
-        
-              {/* Modal para escolher o calendário */}
-              <Modal
-  animationType="fade"
-  transparent={true}
-  visible={showCalendarModal}
-  onRequestClose={() => setShowCalendarModal(false)}
->
-  <TouchableWithoutFeedback onPress={() => setShowCalendarModal(false)}>
-    <View style={styles.calendarModalOverlay}>
-      <TouchableWithoutFeedback>
-        <View style={styles.calendarModal}>
-          <View style={styles.modalTitle}>
-            <Text>Escolha o Calendário</Text>
-          </View>
-
-          <TouchableOpacity
-            style={styles.calendarOption}
-            onPress={() => openCalendar("CalendarEvents")}
-          >
-            <Ionicons name="calendar-outline" size={24} color="black" />
-            <Text style={styles.optionText}>Calendário de Eventos</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.calendarOption}
-            onPress={() => openCalendar("CalendarHolidays")}
-          >
-            <Ionicons name="calendar-outline" size={24} color="black" />
-            <Text style={styles.optionText}>Calendário de Férias</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.calendarOption}
-            onPress={() => openCalendar("CalendarBirthdays")}
-          >
-            <Ionicons name="calendar-outline" size={24} color="black" />
-            <Text style={styles.optionText}>Calendário de Aniversários</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.closeButton}
-            onPress={() => setShowCalendarModal(false)}
-          >
-            <Text style={styles.closeButtonText}>Fechar</Text>
-          </TouchableOpacity>
-        </View>
-      </TouchableWithoutFeedback>
-    </View>
-  </TouchableWithoutFeedback>
-</Modal>
-
-        
-              {/* Botões inferiores */}
-              <View style={styles.footerButtons}>
-                <TouchableOpacity
-                  onPress={() => console.log("Home")}
-                  style={styles.iconContainer}
-                >
-                  <Ionicons name="home-outline" size={24} color="black" />
-                </TouchableOpacity>
-                {tipoUsuario === "admin" && (
-                  <TouchableOpacity
-                    onPress={() => setShowPostForm(true)}
-                    style={styles.iconContainer}
-                  >
-                    <Ionicons name="add-circle-outline" size={34} color="black" />
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity
-                  onPress={() => setShowCalendarModal(true)}
-                  style={styles.iconContainer}
-                >
-                  <Ionicons name="calendar-outline" size={24} color="black" />
-                </TouchableOpacity>
-              </View>
-            </SafeAreaView>
-          );
-        };
-        
 
 const styles = StyleSheet.create({
   container: {
@@ -427,6 +206,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 70,
+    zIndex: 10, // Garante que fique acima de outros elementos
   },
   iconContainer: {
     justifyContent: "center",
@@ -450,27 +230,37 @@ const styles = StyleSheet.create({
     padding: 20,
     width: "80%",
     alignItems: "center",
+    elevation: 4, // Sombra para destacar no Android
+    shadowColor: "#000", // Sombra para iOS
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
   },
   modalTitle: {
     fontSize: 18,
     fontWeight: "bold",
     marginBottom: 20,
+    textAlign: "center",
   },
-  
   calendarOption: {
-    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 15, // Espaçamento maior para melhor toque
     borderBottomWidth: 1,
     borderBottomColor: "#E0E0E0",
     width: "100%",
-    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 10, // Adiciona espaçamento lateral
   },
   optionText: {
     fontSize: 16,
     color: "#007AFF",
+    flex: 1, // Ocupa espaço restante para melhor alinhamento
+    textAlign: "left", // Alinha texto à esquerda
   },
   closeButton: {
     marginTop: 20,
-    padding: 10,
+    padding: 12,
     backgroundColor: "#007AFF",
     borderRadius: 8,
     width: "100%",
@@ -479,7 +269,15 @@ const styles = StyleSheet.create({
   closeButtonText: {
     color: "#FFFFFF",
     fontSize: 16,
+    fontWeight: "600", // Deixa o texto mais destacado
+  },
+  loading: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#f2f2f2",
   },
 });
+
 
 export default App;
