@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Modal,
+  Alert,
 } from "react-native";
 import axios from "axios";
 import io from "socket.io-client";
@@ -75,6 +76,7 @@ const Feed: React.FC = () => {
       setPosts(enrichedPosts);
     } catch (error) {
       console.error("Erro ao buscar posts:", error);
+      Alert.alert("Erro", "Não foi possível carregar os posts.");
     } finally {
       setLoading(false);
     }
@@ -114,12 +116,14 @@ const Feed: React.FC = () => {
       );
     } catch (error) {
       console.error("Erro ao registrar reação:", error);
+      Alert.alert("Erro", "Não foi possível registrar a reação.");
     }
   };
 
   useEffect(() => {
     fetchPosts();
 
+    // Conexão ao WebSocket
     socket.on("connect", () => {
       console.log("Conectado ao WebSocket");
     });
@@ -146,6 +150,7 @@ const Feed: React.FC = () => {
       setPosts((prevPosts) => [newPost, ...prevPosts]);
     });
 
+    // Cleanup para desconectar listeners do WebSocket
     return () => {
       socket.off("post-reaction-updated");
       socket.off("comment-added");
