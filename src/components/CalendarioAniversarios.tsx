@@ -27,6 +27,13 @@ const CalendarBirthdays: React.FC = () => {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [tipoUsuario, setTipoUsuario] = useState<string | null>(null);
 
+  // Adiciona um dia a uma data ISO
+  const addOneDay = (isoDate: string): string => {
+    const date = new Date(isoDate);
+    date.setDate(date.getDate() + 1); // Incrementa um dia
+    return date.toISOString().split("T")[0]; // Retorna no formato YYYY-MM-DD
+  };
+
   // Função para buscar aniversários do backend
   const fetchBirthdays = async () => {
     try {
@@ -68,6 +75,7 @@ const CalendarBirthdays: React.FC = () => {
     }
 
     try {
+      // Formata a data antes de salvar no backend
       const formattedDate = selectedDate.toISOString().split("T")[0];
       const response = await axios.post(
         "https://cemear-b549eb196d7c.herokuapp.com/birthdays",
@@ -79,7 +87,8 @@ const CalendarBirthdays: React.FC = () => {
 
       // Atualiza aniversários localmente
       const newBirthday = response.data;
-      setBirthdays((prev) => [...prev, newBirthday]);
+      const adjustedDate = addOneDay(formattedDate); // Ajusta a data para exibição
+      setBirthdays((prev) => [...prev, { ...newBirthday, date: adjustedDate }]);
       setMarkedDates((prev) => ({
         ...prev,
         [newBirthday.date]: { marked: true, dotColor: "green" },
@@ -104,9 +113,14 @@ const CalendarBirthdays: React.FC = () => {
     }
   };
 
-  // Filtrar aniversários do mês atual
+  // Filtrar aniversários do mês atual e ajustar as datas para a listagem
   const currentMonth = new Date().toISOString().split("T")[0].slice(0, 7);
-  const monthlyBirthdays = birthdays.filter((b) => b.date.startsWith(currentMonth));
+  const monthlyBirthdays = birthdays
+    .filter((b) => b.date.startsWith(currentMonth))
+    .map((b) => ({
+      ...b,
+      adjustedDate: addOneDay(b.date), // Adiciona um dia para exibição na lista
+    }));
 
   return (
     <View style={styles.container}>
@@ -160,7 +174,7 @@ const CalendarBirthdays: React.FC = () => {
           <View style={styles.eventItem}>
             <Text style={styles.eventDescription}>{item.name}</Text>
             <Text style={styles.eventDate}>
-              Data: {new Date(item.date).toLocaleDateString("pt-BR")}
+              Data: {new Date(item.adjustedDate).toLocaleDateString("pt-BR")}
             </Text>
           </View>
         )}
@@ -168,6 +182,7 @@ const CalendarBirthdays: React.FC = () => {
     </View>
   );
 };
+
 
 const styles = StyleSheet.create({
   container: {

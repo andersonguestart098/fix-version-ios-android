@@ -1,4 +1,4 @@
-package com.theanderson98.CemearApp
+package com.theanderson98.cemearapp
 
 import android.os.Build
 import android.os.Bundle

@@ -16,6 +16,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 
+
 const FeedScreen: React.FC = () => {
   const [showPostForm, setShowPostForm] = useState(false); // Controle do modal de post
   const [showCalendarModal, setShowCalendarModal] = useState(false); // Controle do modal de calendário

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { SafeAreaView, StyleSheet, ActivityIndicator } from "react-native";
+import { SafeAreaView, StyleSheet, ActivityIndicator, Platform, StatusBar } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import * as Font from "expo-font";
@@ -16,6 +16,12 @@ import CalendarBirthdays from "./src/components/CalendarioAniversarios";
 import Navbar from "./src/components/NavBar";
 import { AppState } from "react-native";
 import { RootStackParamList } from "./src/types";
+import { registerForPushNotificationsAsync } from "./src/utils/notification";
+import * as Device from "expo-device";
+import Constants from "expo-constants";
+import axios from "axios";
+
+const BASE_URL = "https://cemear-b549eb196d7c.herokuapp.com";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -29,19 +35,59 @@ Notifications.setNotificationHandler({
   }),
 });
 
+
+
+
 const App: React.FC = () => {
   const [fontsLoaded, setFontsLoaded] = useState(false);
   const [initialRoute, setInitialRoute] = useState<"Login" | "Feed">("Login");
   const [loadingAuth, setLoadingAuth] = useState(true);
 
   useEffect(() => {
-    loadFontsAndAuth();
+    const configureApp = async () => {
+      // Carrega fontes e autenticação
+      await loadFontsAndAuth();
+  
+    };
+  
+    configureApp();
+  
     const appStateListener = AppState.addEventListener("change", handleAppStateChange);
-
+  
     return () => {
       appStateListener.remove();
     };
   }, []);
+
+useEffect(() => {
+  const initializeApp = async () => {
+    const token = await AsyncStorage.getItem("token");
+    if (token) {
+      console.log("Usuário autenticado, registrando push notifications...");
+      await registerForPushNotificationsAsync();
+    }
+  };
+
+  initializeApp();
+}, []);
+
+
+  useEffect(() => {
+    const notificationListener = Notifications.addNotificationReceivedListener((notification) => {
+      console.log("Notificação recebida:", notification);
+    });
+  
+    const responseListener = Notifications.addNotificationResponseReceivedListener((response) => {
+      console.log("Usuário interagiu com a notificação:", response);
+    });
+  
+    return () => {
+      notificationListener.remove();
+      responseListener.remove();
+    };
+  }, []);
+  
+  
 
   const loadFontsAndAuth = async () => {
     try {
@@ -111,7 +157,6 @@ const App: React.FC = () => {
       console.error("Erro ao resetar badge ou marcar notificações como lidas:", error);
     }
   };
-  
   
   
 

@@ -17,6 +17,7 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useNavigation } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { RootStackParamList } from "../types";
+import { AppState } from "react-native";
 
 const BASE_URL = "https://cemear-b549eb196d7c.herokuapp.com";
 const socket = io(BASE_URL, { path: "/socket.io" });
@@ -60,27 +61,76 @@ const Feed: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
 
-  const fetchPosts = async () => {
+  const fetchPosts = async (pageNumber = 1) => {
+    if (loadingMore || !hasMore) return; // Impede chamadas duplicadas ou desnecessárias
+  
+    setLoadingMore(true);
+    console.log(`Iniciando fetch de posts - Página ${pageNumber}...`);
+  
     try {
-      setLoading(true);
-      const response = await axios.get(`${BASE_URL}/posts`);
+      const response = await axios.get(`${BASE_URL}/posts?page=${pageNumber}&limit=10`);
+      const posts = response.data.posts || [];
+  
       const enrichedPosts = await Promise.all(
-        response.data.map(async (post: PostType) => {
-          const reactions = await fetchReactionCounts(post.id);
-          const commentsCount = await fetchCommentCount(post.id);
-          return { ...post, reactions, comments: { length: commentsCount } };
+        posts.map(async (post: PostType) => {
+          try {
+            const reactions = await fetchReactionCounts(post.id);
+            const commentsCount = await fetchCommentCount(post.id);
+            return { ...post, reactions, comments: { length: commentsCount } };
+          } catch (error) {
+            console.error(`Erro ao enriquecer post ${post.id}:`, error);
+            return post;
+          }
         })
       );
-
-      setPosts(enrichedPosts);
-    } catch (error) {
-      console.error("Erro ao buscar posts:", error);
-      Alert.alert("Erro", "Não foi possível carregar os posts.");
+  
+      setPosts((prevPosts) =>
+        pageNumber === 1 ? enrichedPosts : [...prevPosts, ...enrichedPosts]
+      );
+  
+      setHasMore(posts.length === 10); // Define corretamente se há mais posts para carregar
+    } catch (error: any) {
+      console.error("Erro ao buscar posts:", error.message || error);
+      Alert.alert("Erro", "Não foi possível carregar os posts. Verifique sua conexão ou tente novamente.");
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
+  
+  // Função para carregar mais posts
+  const loadMorePosts = () => {
+    if (!loadingMore && hasMore) {
+      setPage((prevPage) => {
+        const nextPage = prevPage + 1;
+        fetchPosts(nextPage);
+        return nextPage;
+      });
+    }
+  };
+  
+  // Atualiza os posts quando o app volta ao primeiro plano
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState: string) => {
+      if (nextAppState === "active") {
+        console.log("Aplicativo voltou para o primeiro plano. Atualizando feed...");
+        setPage(1);  // Reinicia a página para garantir uma nova busca
+        setHasMore(true);
+        fetchPosts(1);
+      }
+    };
+  
+    const subscription = AppState.addEventListener("change", handleAppStateChange);
+  
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+  
 
   const fetchReactionCounts = async (postId: string) => {
     try {
@@ -213,7 +263,25 @@ const Feed: React.FC = () => {
       {loading ? (
         <SkeletonLoader />
       ) : (
-        <FlatList data={posts} renderItem={renderPost} keyExtractor={(item) => item.id} />
+        <FlatList
+          data={posts}
+          renderItem={renderPost}
+          keyExtractor={(item) => item.id}
+          onEndReached={loadMorePosts}
+          onEndReachedThreshold={0.3}  // Ajuste para melhor experiência de carregamento
+          ListFooterComponent={() =>
+            loadingMore && page > 1 ? (
+              <ActivityIndicator size="large" color="#007AFF" style={styles.loadingMoreIndicator} />
+            ) : null
+          }
+          refreshing={loading}
+          onRefresh={() => {
+            setPage(1);
+            fetchPosts(1);
+          }}
+        />
+
+
       )}
 
       {selectedImage && (
@@ -228,6 +296,9 @@ const Feed: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
+  loadingMoreIndicator: {
+    marginVertical: 20,
+  },
   container: {
     flex: 1,
     backgroundColor: "#FFFFFF",

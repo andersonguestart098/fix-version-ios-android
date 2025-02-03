@@ -27,6 +27,13 @@ const CalendarEvents: React.FC = () => {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [tipoUsuario, setTipoUsuario] = useState<string | null>(null);
 
+  // Adiciona um dia a uma data ISO
+  const addOneDay = (isoDate: string): string => {
+    const date = new Date(isoDate);
+    date.setDate(date.getDate() + 1); // Incrementa um dia
+    return date.toISOString().split("T")[0]; // Retorna no formato YYYY-MM-DD
+  };
+
   // Função para buscar eventos do backend
   const fetchEvents = async () => {
     try {
@@ -79,7 +86,8 @@ const CalendarEvents: React.FC = () => {
 
       // Atualiza eventos localmente
       const newEvent = response.data;
-      setEvents((prev) => [...prev, newEvent]);
+      const adjustedDate = addOneDay(formattedDate); // Ajusta a data para exibição
+      setEvents((prev) => [...prev, { ...newEvent, date: adjustedDate }]);
       setMarkedDates((prev) => ({
         ...prev,
         [newEvent.date]: { marked: true, dotColor: "blue" },
@@ -104,9 +112,14 @@ const CalendarEvents: React.FC = () => {
     }
   };
 
-  // Filtrar eventos do mês atual
+  // Filtrar eventos do mês atual e ajustar as datas para a listagem
   const currentMonth = new Date().toISOString().split("T")[0].slice(0, 7);
-  const monthlyEvents = events.filter((e) => e.date.startsWith(currentMonth));
+  const monthlyEvents = events
+    .filter((e) => e.date.startsWith(currentMonth))
+    .map((e) => ({
+      ...e,
+      adjustedDate: addOneDay(e.date), // Adiciona um dia para exibição na lista
+    }));
 
   return (
     <View style={styles.container}>
@@ -160,7 +173,7 @@ const CalendarEvents: React.FC = () => {
           <View style={styles.eventItem}>
             <Text style={styles.eventDescription}>{item.descricao}</Text>
             <Text style={styles.eventDate}>
-              Data: {new Date(item.date).toLocaleDateString("pt-BR")}
+              Data: {new Date(item.adjustedDate).toLocaleDateString("pt-BR")}
             </Text>
           </View>
         )}

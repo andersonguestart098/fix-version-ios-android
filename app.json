@@ -15,23 +15,16 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.theanderson98.cemearapp",
       "icon": "./assets/icon.png",
-      "buildNumber": "8",
+      "buildNumber": "17",
       "infoPlist": {
-        "UIBackgroundModes": [
-          "remote-notification"
-        ],
-        "UIApplicationShortcutItems": [],
+        "UIBackgroundModes": ["remote-notification"],
         "UIRequiredDeviceCapabilities": [
           "armv7",
           "location-services",
           "gps",
           "accelerometer"
         ],
-        "UIRemoteNotificationTypes": [
-          "alert",
-          "badge",
-          "sound"
-        ]
+        "UIRemoteNotificationTypes": ["alert", "badge", "sound"]
       }
     },
     "android": {
@@ -39,18 +32,16 @@
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#ffffff"
       },
+      "googleServicesFile": "./android/app/google-services.json",
       "package": "com.theanderson98.cemearapp",
-      "versionCode": 8
-    },
-    "web": {
-      "favicon": "./assets/icon.png"
+      "versionCode": 17
     },
     "extra": {
       "eas": {
         "projectId": "ecf65d93-030d-40c4-9c90-1bc55efa9eaf"
       }
     },
-    "runtimeVersion": "1.0.0",
+    "runtimeVersion": "2.0.3",
     "updates": {
       "enabled": true,
       "url": "https://u.expo.dev/ecf65d93-030d-40c4-9c90-1bc55efa9eaf"

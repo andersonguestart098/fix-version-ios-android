@@ -1,4 +1,4 @@
-package com.theanderson98.CemearApp
+package com.theanderson98.cemearapp
 
 import android.app.Application
 import android.content.res.Configuration

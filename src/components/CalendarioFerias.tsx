@@ -22,6 +22,13 @@ const CalendarHolidays: React.FC = () => {
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [tipoUsuario, setTipoUsuario] = useState<string | null>(null);
 
+  // Adiciona um dia a uma data ISO
+  const addOneDay = (isoDate: string): string => {
+    const date = new Date(isoDate);
+    date.setDate(date.getDate() + 1); // Incrementa um dia
+    return date.toISOString().split("T")[0]; // Retorna no formato YYYY-MM-DD
+  };
+
   // Função para buscar férias do backend
   const fetchFerias = async () => {
     try {
@@ -119,11 +126,15 @@ const CalendarHolidays: React.FC = () => {
     }
   };
 
-  // Filtrar férias do mês atual
+  // Filtrar férias do mês atual e ajustar as datas para exibição
   const currentMonth = new Date().toISOString().split("T")[0].slice(0, 7);
-  const monthlyFerias = ferias.filter((f) =>
-    f.startDate.startsWith(currentMonth) || f.returnDate.startsWith(currentMonth)
-  );
+  const monthlyFerias = ferias
+    .filter((f) => f.startDate.startsWith(currentMonth) || f.returnDate.startsWith(currentMonth))
+    .map((f) => ({
+      ...f,
+      adjustedStartDate: addOneDay(f.startDate), // Adiciona um dia para exibição
+      adjustedReturnDate: addOneDay(f.returnDate), // Adiciona um dia para exibição
+    }));
 
   return (
     <View style={styles.container}>
@@ -192,8 +203,8 @@ const CalendarHolidays: React.FC = () => {
           <View style={styles.eventItem}>
             <Text style={styles.eventDescription}>{item.name}</Text>
             <Text style={styles.eventDate}>
-              {new Date(item.startDate).toLocaleDateString("pt-BR")} -{" "}
-              {new Date(item.returnDate).toLocaleDateString("pt-BR")}
+              {new Date(item.adjustedStartDate).toLocaleDateString("pt-BR")} -{" "}
+              {new Date(item.adjustedReturnDate).toLocaleDateString("pt-BR")}
             </Text>
           </View>
         )}
@@ -201,6 +212,7 @@ const CalendarHolidays: React.FC = () => {
     </View>
   );
 };
+
 
 const styles = StyleSheet.create({
   container: {

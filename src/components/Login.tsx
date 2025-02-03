@@ -16,6 +16,7 @@ import { useNavigation } from "@react-navigation/native";
 import axios from "axios";
 import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
+import { registerForPushNotificationsAsync } from "../utils/notification";
 
 const BASE_URL = "https://cemear-b549eb196d7c.herokuapp.com";
 
@@ -50,39 +51,54 @@ const Login: React.FC = () => {
         usuario,
         password,
       });
-
+  
       const { token, userId, tipoUsuario } = response.data;
-
+  
       await AsyncStorage.multiSet([
         ["token", token],
         ["userId", userId],
         ["tipoUsuario", tipoUsuario],
       ]);
-
+  
       await fetchUserAvatar(userId);
-      await registerForPushNotifications();
-
+  
+      // Pergunta ao usuário sobre notificações após login bem-sucedido
+      setTimeout(() => {
+        Alert.alert(
+          "Notificações",
+          "Deseja permitir notificações para receber atualizações?",
+          [
+            {
+              text: "Não",
+              style: "cancel",
+            },
+            {
+              text: "Sim",
+              onPress: async () => {
+                const notificationSuccess = await registerForPushNotificationsAsync();
+                if (notificationSuccess) {
+                  console.log("Notificações ativadas com sucesso.");
+                } else {
+                  console.warn("Falha ao ativar notificações.");
+                }
+              },
+            },
+          ]
+        );
+      }, 500);
+  
       navigation.reset({
         index: 0,
         routes: [{ name: "Feed" as never }],
       });
     } catch (error: any) {
       if (axios.isAxiosError(error)) {
-        // Trata erros específicos de status
-        switch (error.response?.status) {
-          case 400:
-            Alert.alert("Erro", "Credenciais inválidas");
-            break;
-          case 401:
-            Alert.alert("Erro", "Credenciais inválidas");
-            break;
-          default:
-            Alert.alert(
-              "Erro",
-              error.response?.data?.msg || "Falha no login. Tente novamente."
-            );
-            break;
-        }
+        const status = error.response?.status;
+        const errorMsg =
+          status === 400 || status === 401
+            ? "Credenciais inválidas"
+            : error.response?.data?.msg || "Erro no login. Tente novamente.";
+        Alert.alert("Erro", errorMsg);
       } else {
         Alert.alert("Erro", "Ocorreu um erro inesperado. Tente novamente.");
       }
@@ -90,6 +106,7 @@ const Login: React.FC = () => {
       setLoading(false);
     }
   };
+  
 
   const fetchUserAvatar = async (userId: string) => {
     try {
@@ -97,46 +114,10 @@ const Login: React.FC = () => {
       const { avatar } = response.data;
       await AsyncStorage.setItem("avatar", avatar);
     } catch (error) {
-      console.error("Erro ao buscar avatar do usuário:", error.response?.data || error.message);
-    }
-  };
-
-  const registerForPushNotifications = async () => {
-    try {
-      if (!Device.isDevice) {
-        Alert.alert("Erro", "Notificações push só funcionam em dispositivos físicos.");
-        return;
-      }
-
-      const { status: existingStatus } = await Notifications.getPermissionsAsync();
-      let finalStatus = existingStatus;
-
-      if (existingStatus !== "granted") {
-        const { status } = await Notifications.requestPermissionsAsync();
-        finalStatus = status;
-      }
-
-      if (finalStatus !== "granted") {
-        Alert.alert("Erro", "Permissões para notificações não concedidas.");
-        return;
-      }
-
-      const { data: expoPushToken } = await Notifications.getExpoPushTokenAsync();
-      const userId = await AsyncStorage.getItem("userId");
-
-      if (!expoPushToken || !userId) {
-        Alert.alert("Erro", "Não foi possível registrar para notificações.");
-        return;
-      }
-
-      await axios.post(`${BASE_URL}/registerPushToken`, {
-        userId,
-        expoPushToken,
-      });
-
-      console.log("Push token registrado com sucesso:", expoPushToken);
-    } catch (error: any) {
-      console.error("Erro ao registrar push token:", error.response?.data || error.message);
+      console.error(
+        "Erro ao buscar avatar do usuário:",
+        error.response?.data || error.message
+      );
     }
   };
 
