@@ -112,14 +112,15 @@ const CalendarEvents: React.FC = () => {
     }
   };
 
-  // Filtrar eventos do mês atual e ajustar as datas para a listagem
+  // Filtrar eventos do mês atual, ajustar as datas e ordenar por data (mais antiga para mais recente)
   const currentMonth = new Date().toISOString().split("T")[0].slice(0, 7);
   const monthlyEvents = events
     .filter((e) => e.date.startsWith(currentMonth))
     .map((e) => ({
       ...e,
       adjustedDate: addOneDay(e.date), // Adiciona um dia para exibição na lista
-    }));
+    }))
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()); // Ordem crescente
 
   return (
     <View style={styles.container}>

@@ -18,9 +18,11 @@ import { useNavigation } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { RootStackParamList } from "../types";
 import { AppState } from "react-native";
+import LottieView from "lottie-react-native";
 
 const BASE_URL = "https://cemear-b549eb196d7c.herokuapp.com";
 const socket = io(BASE_URL, { path: "/socket.io" });
+const heartAnimation = require("../../assets/Animation - 1740572169179.json");
 
 type PostType = {
   id: string;
@@ -34,6 +36,7 @@ type PostType = {
     usuario: string;
     avatar: string | null;
   } | null;
+  created_at: string; // Ajustado para corresponder ao backend
 };
 
 axios.interceptors.request.use(async (config) => {
@@ -64,6 +67,7 @@ const Feed: React.FC = () => {
   const [page, setPage] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const [reactingPostId, setReactingPostId] = useState<string | null>(null);
 
   const fetchPosts = async (pageNumber = 1) => {
     if (loadingMore || !hasMore) return; // Impede chamadas duplicadas ou desnecessárias
@@ -154,6 +158,7 @@ const Feed: React.FC = () => {
 
   const handleReaction = async (postId: string, reactionType: string) => {
     try {
+      setReactingPostId(postId); // Ativa a animação
       const response = await axios.post(`${BASE_URL}/posts/${postId}/reaction`, {
         type: reactionType,
       });
@@ -164,9 +169,12 @@ const Feed: React.FC = () => {
           post.id === updatedPost.id ? { ...post, reactions: updatedPost.reactions } : post
         )
       );
+
+      setTimeout(() => setReactingPostId(null), 1000); // Reseta após a animação
     } catch (error) {
       console.error("Erro ao registrar reação:", error);
       Alert.alert("Erro", "Não foi possível registrar a reação.");
+      setReactingPostId(null);
     }
   };
 
@@ -221,40 +229,57 @@ const Feed: React.FC = () => {
 
     return (
       <View style={styles.postContainer}>
-        <View style={styles.userInfo}>
-          <Image
-            source={{ uri: avatarUri }}
-            style={styles.avatar}
-          />
-          <Text style={styles.username}>{item.user?.usuario || "Usuário Anônimo"}</Text>
-        </View>
+      <View style={styles.userInfo}>
+        <Image source={{ uri: avatarUri }} style={styles.avatar} />
+        <Text style={styles.username}>{item.user?.usuario || "Usuário Anônimo"}</Text>
+      </View>
 
-        {item.imagePath && (
-          <TouchableOpacity onPress={() => openImageFullScreen(item.imagePath)}>
-            <Image source={{ uri: item.imagePath }} style={styles.postImage} />
-          </TouchableOpacity>
-        )}
-
-        <Text style={styles.caption}>{item.titulo}</Text>
-        <Text style={styles.content}>{item.conteudo}</Text>
-
-        <TouchableOpacity onPress={() => navigation.navigate("ReactionList", { postId: item.id })}>
-          <Text style={styles.reactionText}>Ver quem reagiu</Text>
+      {item.imagePath && (
+        <TouchableOpacity onPress={() => openImageFullScreen(item.imagePath)}>
+          <Image source={{ uri: item.imagePath }} style={styles.postImage} />
         </TouchableOpacity>
+      )}
 
-        <View style={styles.actionRow}>
-          <TouchableOpacity onPress={() => handleReaction(item.id, "like")}>
-            <Ionicons name="heart-outline" size={24} color="red" />
-            <Text>{item.reactions?.like || 0}</Text>
-          </TouchableOpacity>
+      <Text style={styles.caption}>{item.titulo}</Text>
+      <Text style={styles.content}>{item.conteudo}</Text>
+      
+      {/* Adicionando a data do post */}
+      <Text style={styles.postDate}>
+        {new Date(item.created_at).toLocaleDateString("pt-BR")}
+      </Text>
+
+      <TouchableOpacity onPress={() => navigation.navigate("ReactionList", { postId: item.id })}>
+        <Text style={styles.reactionText}>Ver quem reagiu</Text>
+      </TouchableOpacity>
+
+      <View style={styles.actionRow}>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => handleReaction(item.id, "like")}
+        >
+          {/* Container relativo para posicionar a animação */}
+          <View style={styles.iconContainer}>
+            <Ionicons name="heart-outline" size={32} color="red" />
+            {reactingPostId === item.id && (
+              <LottieView
+                source={heartAnimation}
+                autoPlay
+                loop={false}
+                style={styles.lottieIcon}
+              />
+            )}
+          </View>
+          <Text style={styles.actionText}>{item.reactions?.like || 0}</Text>
+        </TouchableOpacity>
           <TouchableOpacity
+            style={styles.actionButton}
             onPress={() => navigation.navigate("Comments", { postId: item.id })}
           >
-            <Ionicons name="chatbubble-outline" size={24} color="blue" />
-            <Text>{item.comments?.length || 0}</Text>
+            <Ionicons name="chatbubble-outline" size={32} color="#00AEEF" />
+            <Text style={styles.actionText}>{item.comments?.length || 0}</Text>
           </TouchableOpacity>
-        </View>
       </View>
+    </View>
     );
   };
 
@@ -344,6 +369,12 @@ const styles = StyleSheet.create({
     marginTop: 5,
     fontSize: 14,
     color: "#333",
+    marginBottom: 10,
+  },
+  postDate: { // Adicionado o estilo para a data
+    fontSize: 12,
+    color: "#666",
+    marginBottom: 10,
   },
   reactionText: {
     marginTop: 10,
@@ -393,6 +424,30 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
     resizeMode: "contain",
+  },
+  actionButton: {
+    alignItems: "center",
+    padding: 10, // Área clicável
+  },
+  actionText: {
+    marginTop: 5,
+    fontSize: 14,
+    color: "#333",
+  },
+  iconContainer: {
+    position: "relative", // Container relativo para a animação absoluta
+    width: 32, // Tamanho fixo do ícone original
+    height: 32,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  lottieIcon: {
+    width: 80, // Muito maior que o ícone original
+    height: 80,
+    position: "absolute", // Sobreposto ao ícone
+    zIndex: 1, // Garante que a animação fique por cima
+    top: -24, // Centraliza verticalmente (metade da diferença: (80 - 32) / 2)
+    left: -24, // Centraliza horizontalmente
   },
 });
 

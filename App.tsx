@@ -20,6 +20,7 @@ import { registerForPushNotificationsAsync } from "./src/utils/notification";
 import * as Device from "expo-device";
 import Constants from "expo-constants";
 import axios from "axios";
+import FileManager from "./src/components/FileManager";
 
 const BASE_URL = "https://cemear-b549eb196d7c.herokuapp.com";
 
@@ -180,7 +181,6 @@ useEffect(() => {
           <Stack.Screen name="Feed">
             {() => (
               <SafeAreaView style={styles.container}>
-                
                 <FeedScreen />
               </SafeAreaView>
             )}
@@ -224,6 +224,16 @@ useEffect(() => {
               <SafeAreaView style={styles.container}>
                 <Navbar />
                 <CalendarBirthdays />
+              </SafeAreaView>
+            )}
+          </Stack.Screen>
+
+          {/* Nova Tela FileManager com Navbar */}
+          <Stack.Screen name="FileManager">
+            {() => (
+              <SafeAreaView style={styles.container}>
+                <Navbar />
+                <FileManager />
               </SafeAreaView>
             )}
           </Stack.Screen>

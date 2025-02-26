@@ -6,6 +6,7 @@ export type RootStackParamList = {
   CalendarEvents: undefined;
   CalendarHolidays: undefined;
   CalendarBirthdays: undefined;
+  FileManager: undefined;
   Comments: { postId: string };
   ReactionList: { postId: string }; // Adicionando ReactionList com parâmetros
 };

@@ -22,20 +22,17 @@ const CalendarHolidays: React.FC = () => {
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [tipoUsuario, setTipoUsuario] = useState<string | null>(null);
 
-  // Adiciona um dia a uma data ISO
   const addOneDay = (isoDate: string): string => {
     const date = new Date(isoDate);
-    date.setDate(date.getDate() + 1); // Incrementa um dia
-    return date.toISOString().split("T")[0]; // Retorna no formato YYYY-MM-DD
+    date.setDate(date.getDate() + 1);
+    return date.toISOString().split("T")[0];
   };
 
-  // Função para buscar férias do backend
   const fetchFerias = async () => {
     try {
       const response = await axios.get("https://cemear-b549eb196d7c.herokuapp.com/ferias");
       const data = response.data;
 
-      // Marca os dias de férias no calendário
       const marked = data.reduce((acc: Record<string, any>, ferias: Ferias) => {
         let currentDate = new Date(ferias.startDate);
         const endDate = new Date(ferias.returnDate);
@@ -68,7 +65,6 @@ const CalendarHolidays: React.FC = () => {
     fetchTipoUsuario();
   }, []);
 
-  // Adicionar novas férias
   const handleAddFerias = async () => {
     if (!employee.trim() || !startDate || !endDate) {
       Alert.alert("Erro", "Por favor, preencha todos os campos.");
@@ -108,39 +104,46 @@ const CalendarHolidays: React.FC = () => {
     }
   };
 
-  // Clique em uma data
   const onDayPress = (day: DateData) => {
-    const feriasDia = ferias.filter(
-      (f) =>
-        new Date(f.startDate).toISOString().split("T")[0] <= day.dateString &&
-        new Date(f.returnDate).toISOString().split("T")[0] >= day.dateString
-    );
+    const feriasDia = ferias
+      .filter(
+        (f) =>
+          new Date(f.startDate).toISOString().split("T")[0] <= day.dateString &&
+          new Date(f.returnDate).toISOString().split("T")[0] >= day.dateString
+      )
+      // Ordenar por startDate em ordem crescente
+      .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
 
     if (feriasDia.length > 0) {
-      Alert.alert(
-        "Férias",
-        feriasDia.map((f) => `${f.name}: ${f.startDate} - ${f.returnDate}`).join("\n")
-      );
+      // Criar uma string organizada para o modal
+      const feriasFormatadas = feriasDia
+        .map((f) => {
+          const start = new Date(f.startDate).toLocaleDateString("pt-BR");
+          const end = new Date(f.returnDate).toLocaleDateString("pt-BR");
+          return `${f.name}\nPeríodo: ${start} - ${end}`;
+        })
+        .join("\n\n"); // Separar cada entrada com duas quebras de linha para melhor legibilidade
+
+      Alert.alert("Férias", feriasFormatadas);
     } else {
       Alert.alert("Sem férias", "Nenhuma férias para esta data.");
     }
   };
 
-  // Filtrar férias do mês atual e ajustar as datas para exibição
   const currentMonth = new Date().toISOString().split("T")[0].slice(0, 7);
   const monthlyFerias = ferias
     .filter((f) => f.startDate.startsWith(currentMonth) || f.returnDate.startsWith(currentMonth))
     .map((f) => ({
       ...f,
-      adjustedStartDate: addOneDay(f.startDate), // Adiciona um dia para exibição
-      adjustedReturnDate: addOneDay(f.returnDate), // Adiciona um dia para exibição
-    }));
+      adjustedStartDate: addOneDay(f.startDate),
+      adjustedReturnDate: addOneDay(f.returnDate),
+    }))
+    .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Calendário de Férias</Text>
 
-      {/* Calendário */}
       <Calendar
         markedDates={markedDates}
         onDayPress={onDayPress}
@@ -151,7 +154,6 @@ const CalendarHolidays: React.FC = () => {
         }}
       />
 
-      {/* Inputs para adicionar férias (somente para admin) */}
       {tipoUsuario === "admin" && (
         <>
           <TextInput
@@ -194,7 +196,6 @@ const CalendarHolidays: React.FC = () => {
         </>
       )}
 
-      {/* Lista de férias do mês */}
       <Text style={styles.subtitle}>Férias do Mês</Text>
       <FlatList
         data={monthlyFerias}
@@ -212,7 +213,6 @@ const CalendarHolidays: React.FC = () => {
     </View>
   );
 };
-
 
 const styles = StyleSheet.create({
   container: {

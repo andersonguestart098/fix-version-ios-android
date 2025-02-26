@@ -11,16 +11,15 @@ import {
 import Navbar from "../components/NavBar";
 import Feed from "../components/Feed";
 import PostForm from "../components/PostForm";
-import NavButton from "../components/botoesNav"; // Botões de navegação
+import NavButton from "../components/botoesNav";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 
-
 const FeedScreen: React.FC = () => {
-  const [showPostForm, setShowPostForm] = useState(false); // Controle do modal de post
-  const [showCalendarModal, setShowCalendarModal] = useState(false); // Controle do modal de calendário
-  const [tipoUsuario, setTipoUsuario] = useState<string | null>(null); // Tipo de usuário
+  const [showPostForm, setShowPostForm] = useState(false);
+  const [showCalendarModal, setShowCalendarModal] = useState(false);
+  const [tipoUsuario, setTipoUsuario] = useState<string | null>(null);
   const navigation = useNavigation();
 
   useEffect(() => {
@@ -34,7 +33,11 @@ const FeedScreen: React.FC = () => {
   const openCalendar = (screen: string) => {
     console.log(`Abrindo calendário: ${screen}`);
     setShowCalendarModal(false);
-    navigation.navigate(screen as never); // Navega para a tela correspondente
+    navigation.navigate(screen as never);
+  };
+
+  const openFileManager = () => {
+    navigation.navigate("FileManager" as never);
   };
 
   return (
@@ -47,7 +50,7 @@ const FeedScreen: React.FC = () => {
         animationType="slide"
         transparent={true}
         visible={showPostForm}
-        onRequestClose={() => setShowPostForm(false)} // Fecha ao pressionar o botão de voltar
+        onRequestClose={() => setShowPostForm(false)}
       >
         <View style={styles.modalContainer}>
           <PostForm onClose={() => setShowPostForm(false)} />
@@ -59,7 +62,7 @@ const FeedScreen: React.FC = () => {
         animationType="fade"
         transparent={true}
         visible={showCalendarModal}
-        onRequestClose={() => setShowCalendarModal(false)} // Fecha ao pressionar o botão de voltar
+        onRequestClose={() => setShowCalendarModal(false)}
       >
         <TouchableWithoutFeedback onPress={() => setShowCalendarModal(false)}>
           <View style={styles.calendarModalOverlay}>
@@ -101,24 +104,19 @@ const FeedScreen: React.FC = () => {
 
       {/* Botões de navegação na parte inferior */}
       <View style={styles.footerButtons}>
-        {/* Botão Home (para todos os usuários) */}
         <NavButton
-          iconName="home-outline"
-          onPress={() => console.log("Home")} // Placeholder para navegação Home
+          iconName="download-outline"
+          onPress={openFileManager}
         />
-
-        {/* Botão Adicionar Post (apenas para admin) */}
         {tipoUsuario === "admin" && (
           <NavButton
             iconName="add-circle-outline"
-            onPress={() => setShowPostForm(true)} // Abre o modal com o PostForm
+            onPress={() => setShowPostForm(true)}
           />
         )}
-
-        {/* Botão Calendário (para todos os usuários) */}
         <NavButton
           iconName="calendar-outline"
-          onPress={() => setShowCalendarModal(true)} // Abre o modal do calendário
+          onPress={() => setShowCalendarModal(true)}
         />
       </View>
     </SafeAreaView>
@@ -142,7 +140,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: 70,
+    height: 65, 
   },
   modalContainer: {
     flex: 1,

@@ -113,14 +113,15 @@ const CalendarBirthdays: React.FC = () => {
     }
   };
 
-  // Filtrar aniversários do mês atual e ajustar as datas para a listagem
+  // Filtrar aniversários do mês atual, ajustar as datas e ordenar por data (mais antiga para mais recente)
   const currentMonth = new Date().toISOString().split("T")[0].slice(0, 7);
   const monthlyBirthdays = birthdays
     .filter((b) => b.date.startsWith(currentMonth))
     .map((b) => ({
       ...b,
       adjustedDate: addOneDay(b.date), // Adiciona um dia para exibição na lista
-    }));
+    }))
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()); // Ordem crescente
 
   return (
     <View style={styles.container}>
@@ -182,7 +183,6 @@ const CalendarBirthdays: React.FC = () => {
     </View>
   );
 };
-
 
 const styles = StyleSheet.create({
   container: {
