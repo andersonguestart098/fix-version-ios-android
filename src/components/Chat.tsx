@@ -9,13 +9,13 @@ import {
   ActivityIndicator,
   Animated,
   Easing,
-  Dimensions,
 } from "react-native";
 import { SendHorizontal as SendHorizonal } from "lucide-react-native";
-import axios from "axios";
 import io from "socket.io-client";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BlurView } from "expo-blur";
+
+const SOCKET_URL = "http://192.168.0.61:3001"; // Certifique-se de que a URL está correta
 
 interface User {
   id: string;
@@ -47,23 +47,24 @@ const Chat = ({ route }) => {
   const { conversationId, userId, receiverId } = route.params;
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
-  const [socket, setSocket] = useState<any>(null);
+  const [socket, setSocket] = useState(null);
   const [loading, setLoading] = useState(true);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
 
   useEffect(() => {
-    if (!conversationId || !userId || !receiverId) return;
+    if (!conversationId || !userId) return;
 
-    const newSocket = io("http://192.168.0.61:3001", { query: { userId } });
+    const newSocket = io(SOCKET_URL, { query: { userId } });
     setSocket(newSocket);
 
     newSocket.on("connect", () => {
-      newSocket.emit("joinRoom", conversationId);
+      console.log("Socket conectado!");
+      newSocket.emit("joinConversation", conversationId);
     });
 
-    newSocket.on("newMessage", (message: Message) => {
+    newSocket.on("newMessage", (message) => {
       setMessages((prevMessages) => [...prevMessages, message]);
       scrollToBottom();
     });
@@ -80,17 +81,18 @@ const Chat = ({ route }) => {
       const token = await AsyncStorage.getItem("token");
       if (!token) return;
 
-      const response = await axios.get(
-        `http://192.168.0.61:3001/conversations/${conversationId}/messages`,
+      const response = await fetch(
+        `${SOCKET_URL}/conversations/${conversationId}/messages`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
+      const data = await response.json();
 
-      if (Array.isArray(response.data)) {
-        setMessages(response.data.reverse());
+      if (Array.isArray(data)) {
+        setMessages(data.reverse());
         setTimeout(scrollToBottom, 100);
       }
     } catch (error) {
-      console.error("Error fetching messages:", error);
+      console.error("Erro ao buscar mensagens:", error);
     } finally {
       setLoading(false);
       Animated.timing(fadeAnim, {
@@ -106,25 +108,18 @@ const Chat = ({ route }) => {
     flatListRef.current?.scrollToEnd({ animated: true });
   };
 
-  const sendMessage = async () => {
-    if (!newMessage.trim()) return;
+  const sendMessage = () => {
+    if (!newMessage.trim() || !socket) return;
 
-    try {
-      const token = await AsyncStorage.getItem("token");
-      if (!token) return;
+    const messageData = {
+      conversationId,
+      senderId: userId,
+      receiverId,
+      content: newMessage,
+    };
 
-      const response = await axios.post(
-        `http://192.168.0.61:3001/conversations/${conversationId}/messages`,
-        { content: newMessage },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      setNewMessage("");
-      setMessages((prevMessages) => [...prevMessages, response.data]);
-      scrollToBottom();
-    } catch (error) {
-      console.error("Error sending message:", error);
-    }
+    socket.emit("sendMessage", messageData);
+    setNewMessage("");
   };
 
   const renderMessage = ({ item }: { item: Message }) => {
