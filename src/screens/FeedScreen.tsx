@@ -15,12 +15,17 @@ import NavButton from "../components/botoesNav";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { RootStackParamList } from "../types";
+
+type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 const FeedScreen: React.FC = () => {
+  const navigation = useNavigation<NavigationProp>();
   const [showPostForm, setShowPostForm] = useState(false);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [tipoUsuario, setTipoUsuario] = useState<string | null>(null);
-  const navigation = useNavigation();
+
 
   useEffect(() => {
     const fetchTipoUsuario = async () => {
@@ -39,6 +44,19 @@ const FeedScreen: React.FC = () => {
   const openFileManager = () => {
     navigation.navigate("FileManager" as never);
   };
+  
+
+  const openChat = async () => {
+    const userId = await AsyncStorage.getItem("userId");
+    if (!userId) {
+      console.error("Usuário não autenticado");
+      return;
+    }
+  
+    console.log("🗣️ Navegando para DirectMessages");
+    navigation.navigate("DirectMessages");
+  };
+  
 
   return (
     <SafeAreaView style={styles.container}>
@@ -104,20 +122,12 @@ const FeedScreen: React.FC = () => {
 
       {/* Botões de navegação na parte inferior */}
       <View style={styles.footerButtons}>
-        <NavButton
-          iconName="download-outline"
-          onPress={openFileManager}
-        />
+        <NavButton iconName="download-outline" onPress={openFileManager} />
         {tipoUsuario === "admin" && (
-          <NavButton
-            iconName="add-circle-outline"
-            onPress={() => setShowPostForm(true)}
-          />
+          <NavButton iconName="add-circle-outline" onPress={() => setShowPostForm(true)} />
         )}
-        <NavButton
-          iconName="calendar-outline"
-          onPress={() => setShowCalendarModal(true)}
-        />
+        <NavButton iconName="calendar-outline" onPress={() => setShowCalendarModal(true)} />
+        <NavButton iconName="chatbubble-outline" onPress={openChat} />
       </View>
     </SafeAreaView>
   );

@@ -7,10 +7,11 @@ export type RootStackParamList = {
   CalendarHolidays: undefined;
   CalendarBirthdays: undefined;
   FileManager: undefined;
+  Chat: { conversationId: string; userId: string; receiverId: string };
   Comments: { postId: string };
-  ReactionList: { postId: string }; // Adicionando ReactionList com parâmetros
+  ReactionList: { postId: string };
+  DirectMessages: undefined; // Adicionado para a tela de mensagens diretas
 };
-
 
 export interface DocumentPickerSuccessResult {
   type: "success";

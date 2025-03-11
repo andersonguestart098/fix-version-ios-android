@@ -21,6 +21,8 @@ import * as Device from "expo-device";
 import Constants from "expo-constants";
 import axios from "axios";
 import FileManager from "./src/components/FileManager";
+import Chat from "./src/components/Chat";
+import DirectMessages from "./src/components/DirectMessages";
 
 const BASE_URL = "https://cemear-b549eb196d7c.herokuapp.com";
 
@@ -167,79 +169,101 @@ useEffect(() => {
 
   return (
     <NavigationContainer>
-      <SafeAreaView style={styles.container}>
-        <Stack.Navigator
-          initialRouteName={initialRoute}
-          screenOptions={{
-            headerShown: false,
-          }}
-        >
-          {/* Tela de Login sem Navbar */}
-          <Stack.Screen name="Login" component={Login} />
+  <SafeAreaView style={styles.container}>
+    <Stack.Navigator
+      initialRouteName={initialRoute}
+      screenOptions={{
+        headerShown: false,
+      }}
+    >
+      {/* Tela de Login sem Navbar */}
+      <Stack.Screen name="Login" component={Login} />
 
-          {/* Feed com Navbar */}
-          <Stack.Screen name="Feed">
-            {() => (
-              <SafeAreaView style={styles.container}>
-                <FeedScreen />
-              </SafeAreaView>
-            )}
-          </Stack.Screen>
+      {/* Feed com Navbar */}
+      <Stack.Screen name="Feed">
+        {() => (
+          <SafeAreaView style={styles.container}>
+            <FeedScreen />
+          </SafeAreaView>
+        )}
+      </Stack.Screen>
 
-          {/* Outras Telas com Navbar */}
-          <Stack.Screen name="ReactionList">
-            {() => (
-              <SafeAreaView style={styles.container}>
-                <Navbar />
-                <ReactionList />
-              </SafeAreaView>
-            )}
-          </Stack.Screen>
-          <Stack.Screen name="Comments">
-            {() => (
-              <SafeAreaView style={styles.container}>
-                <Navbar />
-                <CommentsScreen />
-              </SafeAreaView>
-            )}
-          </Stack.Screen>
-          <Stack.Screen name="CalendarHolidays">
-            {() => (
-              <SafeAreaView style={styles.container}>
-                <Navbar />
-                <CalendarHolidays />
-              </SafeAreaView>
-            )}
-          </Stack.Screen>
-          <Stack.Screen name="CalendarEvents">
-            {() => (
-              <SafeAreaView style={styles.container}>
-                <Navbar />
-                <CalendarEvents />
-              </SafeAreaView>
-            )}
-          </Stack.Screen>
-          <Stack.Screen name="CalendarBirthdays">
-            {() => (
-              <SafeAreaView style={styles.container}>
-                <Navbar />
-                <CalendarBirthdays />
-              </SafeAreaView>
-            )}
-          </Stack.Screen>
+      {/* Outras Telas com Navbar */}
+      <Stack.Screen name="ReactionList">
+        {() => (
+          <SafeAreaView style={styles.container}>
+            <Navbar />
+            <ReactionList />
+          </SafeAreaView>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="Comments">
+        {() => (
+          <SafeAreaView style={styles.container}>
+            <Navbar />
+            <CommentsScreen />
+          </SafeAreaView>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="CalendarHolidays">
+        {() => (
+          <SafeAreaView style={styles.container}>
+            <Navbar />
+            <CalendarHolidays />
+          </SafeAreaView>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="CalendarEvents">
+        {() => (
+          <SafeAreaView style={styles.container}>
+            <Navbar />
+            <CalendarEvents />
+          </SafeAreaView>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="CalendarBirthdays">
+        {() => (
+          <SafeAreaView style={styles.container}>
+            <Navbar />
+            <CalendarBirthdays />
+          </SafeAreaView>
+        )}
+      </Stack.Screen>
 
-          {/* Nova Tela FileManager com Navbar */}
-          <Stack.Screen name="FileManager">
-            {() => (
-              <SafeAreaView style={styles.container}>
-                <Navbar />
-                <FileManager />
-              </SafeAreaView>
-            )}
-          </Stack.Screen>
-        </Stack.Navigator>
-      </SafeAreaView>
-    </NavigationContainer>
+      {/* Nova Tela FileManager com Navbar */}
+      <Stack.Screen name="FileManager">
+        {() => (
+          <SafeAreaView style={styles.container}>
+            <Navbar />
+            <FileManager />
+          </SafeAreaView>
+        )}
+      </Stack.Screen>
+
+      {/* DirectMessages (Lista de conversas) */}
+      <Stack.Screen name="DirectMessages">
+        {() => (
+          <SafeAreaView style={styles.container}>
+            <Navbar />
+            <DirectMessages />
+          </SafeAreaView>
+        )}
+      </Stack.Screen>
+
+      {/* Chat (Conversa entre dois usuários) */}
+      <Stack.Screen name="Chat">
+        {({ route }) => (
+          <SafeAreaView style={styles.container}>
+            <Navbar />
+            <Chat route={route} />
+          </SafeAreaView>
+        )}
+      </Stack.Screen>
+
+    </Stack.Navigator>
+  </SafeAreaView>
+</NavigationContainer>
+
   );
 };
 
