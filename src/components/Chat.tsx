@@ -9,31 +9,16 @@ import {
   ActivityIndicator,
   Animated,
   Easing,
+  Keyboard,
 } from "react-native";
-import { SendHorizontal as SendHorizonal } from "lucide-react-native";
+import { SendHorizontal as SendHorizonal, Check, CheckCheck } from "lucide-react-native";
 import io from "socket.io-client";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BlurView } from "expo-blur";
+import LottieView from "lottie-react-native";
+import typingAnimation from "../../assets/Animation - 1740572169179.json";
 
-const SOCKET_URL = "http://192.168.0.61:3001"; // Certifique-se de que a URL está correta
-
-interface User {
-  id: string;
-  usuario: string;
-  avatar: string | null;
-}
-
-interface Message {
-  id: string;
-  conversationId: string;
-  senderId: string;
-  receiverId: string;
-  content: string;
-  read: boolean;
-  createdAt: string;
-  sender: User;
-  receiver: User;
-}
+const SOCKET_URL = "http://192.168.0.61:3001";
 
 const Chat = ({ route }) => {
   if (!route.params) {
@@ -45,34 +30,48 @@ const Chat = ({ route }) => {
   }
 
   const { conversationId, userId, receiverId } = route.params;
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
-  const [socket, setSocket] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isTyping, setIsTyping] = useState(false);
+  const socket = useRef(null); // ✅ Agora o socket é armazenado corretamente
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const flatListRef = useRef<FlatList>(null);
-  const inputRef = useRef<TextInput>(null);
+  const flatListRef = useRef(null);
+  const inputRef = useRef(null);
 
   useEffect(() => {
     if (!conversationId || !userId) return;
 
-    const newSocket = io(SOCKET_URL, { query: { userId } });
-    setSocket(newSocket);
+    // ✅ Criando o socket
+    socket.current = io(SOCKET_URL, { query: { userId } });
 
-    newSocket.on("connect", () => {
-      console.log("Socket conectado!");
-      newSocket.emit("joinConversation", conversationId);
+    socket.current.on("connect", () => {
+      console.log("✅ Socket conectado!");
+      socket.current.emit("joinConversation", conversationId);
     });
 
-    newSocket.on("newMessage", (message) => {
+    socket.current.on("newMessage", (message) => {
       setMessages((prevMessages) => [...prevMessages, message]);
       scrollToBottom();
+    });
+
+    socket.current.on("typing", ({ typing }) => {
+      setIsTyping(typing);
+    });
+
+    // ✅ Receber evento de mensagens lidas em tempo real
+    socket.current.on("messagesRead", ({ conversationId: convId, userId: readerId }) => {
+      if (convId === conversationId && readerId === receiverId) {
+        setMessages((prevMessages) =>
+          prevMessages.map((msg) => ({ ...msg, read: true }))
+        );
+      }
     });
 
     fetchMessages();
 
     return () => {
-      newSocket.disconnect();
+      socket.current.disconnect();
     };
   }, [conversationId, userId]);
 
@@ -81,15 +80,18 @@ const Chat = ({ route }) => {
       const token = await AsyncStorage.getItem("token");
       if (!token) return;
 
-      const response = await fetch(
-        `${SOCKET_URL}/conversations/${conversationId}/messages`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const response = await fetch(`${SOCKET_URL}/conversations/${conversationId}/messages`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const data = await response.json();
 
       if (Array.isArray(data)) {
-        setMessages(data.reverse());
+        setMessages(data);
         setTimeout(scrollToBottom, 100);
+      }
+
+      if (data.some((msg) => msg.receiverId === userId && !msg.read)) {
+        markMessagesAsRead();
       }
     } catch (error) {
       console.error("Erro ao buscar mensagens:", error);
@@ -104,12 +106,38 @@ const Chat = ({ route }) => {
     }
   }, [conversationId]);
 
+  const markMessagesAsRead = async () => {
+    if (!socket.current) {
+      console.warn("⚠️ Socket ainda não está pronto para emitir eventos.");
+      return;
+    }
+
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return;
+
+      await fetch(`${SOCKET_URL}/conversations/${conversationId}/messages/read`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      });
+
+      console.log("✅ Mensagens marcadas como lidas");
+      socket.current.emit("messagesRead", { conversationId, userId });
+
+      setMessages((prevMessages) =>
+        prevMessages.map((msg) => ({ ...msg, read: true }))
+      );
+    } catch (error) {
+      console.error("❌ Erro ao marcar mensagens como lidas:", error);
+    }
+  };
+
   const scrollToBottom = () => {
     flatListRef.current?.scrollToEnd({ animated: true });
   };
 
   const sendMessage = () => {
-    if (!newMessage.trim() || !socket) return;
+    if (!newMessage.trim() || !socket.current) return;
 
     const messageData = {
       conversationId,
@@ -118,11 +146,14 @@ const Chat = ({ route }) => {
       content: newMessage,
     };
 
-    socket.emit("sendMessage", messageData);
+    socket.current.emit("sendMessage", messageData);
     setNewMessage("");
+
+    socket.current.emit("typing", { conversationId, typing: false });
+    Keyboard.dismiss();
   };
 
-  const renderMessage = ({ item }: { item: Message }) => {
+  const renderMessage = ({ item }) => {
     if (!item || !item.content || !item.createdAt) return null;
 
     const isMyMessage = item.senderId === userId;
@@ -130,6 +161,8 @@ const Chat = ({ route }) => {
       hour: "2-digit",
       minute: "2-digit",
     });
+
+    const checkColor = item.read ? "#00AEEF" : "#64748b";
 
     return (
       <View
@@ -157,14 +190,21 @@ const Chat = ({ route }) => {
             >
               {item.content}
             </Text>
-            <Text
-              style={[
-                styles.messageTime,
-                isMyMessage ? styles.myMessageTime : styles.otherMessageTime,
-              ]}
-            >
-              {messageTime}
-            </Text>
+            <View style={styles.messageFooter}>
+              <Text
+                style={[
+                  styles.messageTime,
+                  isMyMessage ? styles.myMessageTime : styles.otherMessageTime,
+                ]}
+              >
+                {messageTime}
+              </Text>
+              {isMyMessage && (
+                <View style={styles.checkIcon}>
+                  <CheckCheck size={16} color={checkColor} />
+                </View>
+              )}
+            </View>
           </BlurView>
         </View>
       </View>
@@ -184,31 +224,37 @@ const Chat = ({ route }) => {
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.messagesList}
             showsVerticalScrollIndicator={false}
+            onContentSizeChange={scrollToBottom}
           />
+          {isTyping && (
+            <View style={styles.typingContainer}>
+              <LottieView
+                source={typingAnimation}
+                autoPlay
+                loop
+                style={styles.typingAnimation}
+              />
+            </View>
+          )}
           <View style={styles.inputContainer}>
             <TextInput
               ref={inputRef}
               style={styles.input}
               value={newMessage}
               onChangeText={setNewMessage}
-              placeholder="Type a message..."
+              placeholder="Escreva uma mensagem..."
               placeholderTextColor="#94a3b8"
               multiline
               maxLength={500}
+              onFocus={() => socket.current.emit("typing", { conversationId, typing: true })}
+              onBlur={() => socket.current.emit("typing", { conversationId, typing: false })}
             />
             <TouchableOpacity
-              style={[
-                styles.sendButton,
-                !newMessage.trim() && styles.sendButtonDisabled,
-              ]}
+              style={[styles.sendButton, !newMessage.trim() && styles.sendButtonDisabled]}
               onPress={sendMessage}
               disabled={!newMessage.trim()}
             >
-              <SendHorizonal
-                size={28}
-                color={newMessage.trim() ? "#ffffff" : "#94a3b8"}
-                strokeWidth={2.5}
-              />
+              <SendHorizonal size={28} color="white" strokeWidth={2.5} />
             </TouchableOpacity>
           </View>
         </Animated.View>
@@ -329,6 +375,25 @@ const styles = StyleSheet.create({
     color: "#991b1b",
     fontSize: 16,
     textAlign: "center",
+  },
+  checkIcon: {
+    marginLeft: 5,
+  },
+  messageFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    marginTop: 4,
+  },
+  typingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
+  typingAnimation: {
+    width: 50,
+    height: 30,
   },
 });
 

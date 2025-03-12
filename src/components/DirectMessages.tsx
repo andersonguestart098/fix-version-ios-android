@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
+  TextInput,
   FlatList,
   TouchableOpacity,
   StyleSheet,
@@ -14,7 +15,10 @@ import axios from "axios";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../types";
-import { UserCircle } from "lucide-react-native"; // Ícone de avatar genérico
+import { UserCircle, Search, Circle } from "lucide-react-native";
+import io from "socket.io-client";
+
+const SOCKET_URL = "http://192.168.0.61:3001";
 
 type DirectMessagesScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -45,20 +49,23 @@ const DirectMessages: React.FC = () => {
   const navigation = useNavigation<DirectMessagesScreenNavigationProp>();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
+  const [filteredList, setFilteredList] = useState<(Conversation | User)[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
+  const [searchText, setSearchText] = useState("");
+  const [loading, setLoading] = useState(true);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const socket = useRef(null);
 
   useEffect(() => {
     const fetchUserData = async () => {
       const storedUserId = await AsyncStorage.getItem("userId");
       if (storedUserId) {
         setUserId(storedUserId);
-        await Promise.all([fetchConversations(storedUserId), fetchUsers()]);
+        await fetchUsersAndConversations(storedUserId);
       }
       setLoading(false);
 
-      // Ativar fade-in apenas quando os dados carregam
       Animated.timing(fadeAnim, {
         toValue: 1,
         duration: 500,
@@ -67,41 +74,78 @@ const DirectMessages: React.FC = () => {
     };
 
     fetchUserData();
+
+    // 🔥 Conectar ao Socket.IO e ouvir eventos de usuários online
+    socket.current = io(SOCKET_URL, { query: { userId } });
+
+    socket.current.on("userOnlineStatus", (onlineUserIds) => {
+      setOnlineUsers(onlineUserIds);
+    });
+
+    return () => {
+      socket.current.disconnect();
+    };
   }, []);
 
-  const fetchConversations = async (storedUserId: string) => {
+  const fetchUsersAndConversations = async (storedUserId: string) => {
     try {
       const token = await AsyncStorage.getItem("token");
       if (!token) return;
 
       console.log("📡 Buscando conversas...");
-      const response = await axios.get("http://192.168.0.61:3001/conversations", {
-        headers: { Authorization: `Bearer ${token}` },
+      const [usersResponse, conversationsResponse] = await Promise.all([
+        axios.get(`${SOCKET_URL}/auth/users`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        axios.get(`${SOCKET_URL}/conversations`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
+
+      // Ordenar conversas pela última mensagem mais recente
+      const sortedConversations = conversationsResponse.data.sort((a: Conversation, b: Conversation) => {
+        const lastMessageA = a.messages.length ? new Date(a.messages[0].createdAt).getTime() : 0;
+        const lastMessageB = b.messages.length ? new Date(b.messages[0].createdAt).getTime() : 0;
+        return lastMessageB - lastMessageA;
       });
 
-      console.log("📩 Conversas recebidas:", JSON.stringify(response.data, null, 2));
-      setConversations(response.data);
+      setConversations(sortedConversations);
+
+      // Filtrar usuários que ainda não têm conversa
+      const conversationUserIds = sortedConversations.flatMap((conv) => [conv.user1Id, conv.user2Id]);
+      const usersWithoutConversation = usersResponse.data.filter(
+        (user: User) => user.id !== storedUserId && !conversationUserIds.includes(user.id)
+      );
+
+      setUsers(usersWithoutConversation);
+
+      // Atualizar a lista de exibição
+      setFilteredList([...sortedConversations, ...usersWithoutConversation]);
     } catch (error) {
-      console.error("❌ Erro ao buscar conversas:", error);
+      console.error("❌ Erro ao buscar dados:", error);
     }
   };
 
-  const fetchUsers = async () => {
-    try {
-      const token = await AsyncStorage.getItem("token");
-      if (!token) return;
-
-      console.log("📡 Buscando usuários...");
-      const response = await axios.get("http://192.168.0.61:3001/auth/users", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      console.log("👥 Usuários disponíveis:", response.data);
-      setUsers(response.data);
-    } catch (error) {
-      console.error("❌ Erro ao buscar usuários:", error);
+  // 🔍 Filtragem de busca
+  useEffect(() => {
+    if (!searchText.trim()) {
+      setFilteredList([...conversations, ...users]);
+      return;
     }
-  };
+
+    const lowerText = searchText.toLowerCase();
+
+    const filteredConversations = conversations.filter((conv) => {
+      const otherUser = conv.user1Id === userId ? conv.user2 : conv.user1;
+      return otherUser.usuario.toLowerCase().includes(lowerText);
+    });
+
+    const filteredUsers = users.filter((user) => user.usuario.toLowerCase().includes(lowerText));
+
+    setFilteredList([...filteredConversations, ...filteredUsers]);
+  }, [searchText, conversations, users]);
+
+  const isUserOnline = (userId: string) => onlineUsers.includes(userId);
 
   const openChat = async (selectedUser: User) => {
     if (!userId) return;
@@ -125,7 +169,7 @@ const DirectMessages: React.FC = () => {
         if (!token) return;
 
         const response = await axios.post(
-          "http://192.168.0.61:3001/conversations",
+          `${SOCKET_URL}/conversations`,
           { user2Id: selectedUser.id },
           { headers: { Authorization: `Bearer ${token}` } }
         );
@@ -144,48 +188,51 @@ const DirectMessages: React.FC = () => {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Mensagens Diretas</Text>
+
+      <View style={styles.searchContainer}>
+        <Search size={20} color="#64748b" />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Buscar usuário..."
+          placeholderTextColor="#94a3b8"
+          value={searchText}
+          onChangeText={setSearchText}
+        />
+      </View>
+
       {loading ? (
         <ActivityIndicator size="large" color="#007AFF" />
       ) : (
-        <Animated.FlatList
-          style={{ opacity: fadeAnim }}
-          data={users.filter((user) => user.id !== userId)}
+        <FlatList
+          data={filteredList}
           renderItem={({ item }) => {
-            const conversation = conversations.find(
-              (conv) =>
-                (conv.user1Id === userId && conv.user2Id === item.id) ||
-                (conv.user2Id === userId && conv.user1Id === item.id)
-            );
-            const lastMessage = conversation?.messages.length
-              ? conversation.messages[conversation.messages.length - 1].content
-              : "Iniciar conversa";
+            const isUser = (item as User).usuario !== undefined;
+            const user = isUser
+              ? (item as User)
+              : (item as Conversation).user1Id === userId
+              ? (item as Conversation).user2
+              : (item as Conversation).user1;
 
             return (
-              <TouchableOpacity
-                style={styles.conversationItem}
-                onPress={() => openChat(item)}
-              >
-                {item.avatar ? (
-                  <Image source={{ uri: item.avatar }} style={styles.avatar} />
-                ) : (
-                  <UserCircle size={50} color="#A0A0A0" />
-                )}
+              <TouchableOpacity style={styles.conversationItem} onPress={() => openChat(user)}>
+                <View>
+                  {user.avatar ? (
+                    <Image source={{ uri: user.avatar }} style={styles.avatar} />
+                  ) : (
+                    <UserCircle size={50} color="#A0A0A0" />
+                  )}
+                  {isUserOnline(user.id) && <Circle size={14} color="#32CD32" style={styles.onlineIndicator} />}
+                </View>
                 <View style={styles.textContainer}>
-                  <Text style={styles.userName}>{item.usuario}</Text>
-                  <Text
-                    style={[
-                      styles.lastMessage,
-                      lastMessage === "Iniciar conversa" && styles.newChatMessage,
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {lastMessage}
+                  <Text style={styles.userName}>{user.usuario}</Text>
+                  <Text style={styles.lastMessage} numberOfLines={1}>
+                    {!isUser && (item as Conversation).messages.length > 0 ? (item as Conversation).messages[0].content : "Iniciar conversa"}
                   </Text>
                 </View>
               </TouchableOpacity>
             );
           }}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => (item as any).id}
         />
       )}
     </View>
@@ -204,6 +251,21 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     color: "#1e293b",
   },
+  searchContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#e2e8f0",
+    borderRadius: 24,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    marginBottom: 10,
+  },
+  searchInput: {
+    flex: 1,
+    marginLeft: 10,
+    fontSize: 16,
+    color: "#0f172a",
+  },
   conversationItem: {
     flexDirection: "row",
     alignItems: "center",
@@ -216,6 +278,11 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: 25,
     marginRight: 12,
+  },
+  onlineIndicator: {
+    position: "absolute",
+    bottom: 4,
+    right: 4,
   },
   textContainer: {
     flex: 1,
