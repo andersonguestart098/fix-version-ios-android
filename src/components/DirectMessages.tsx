@@ -18,7 +18,7 @@ import { RootStackParamList } from "../types";
 import { UserCircle, Search, Circle } from "lucide-react-native";
 import io from "socket.io-client";
 
-const SOCKET_URL = "http://192.168.0.61:3001";
+const SOCKET_URL = "https://cemear-b549eb196d7c.herokuapp.com";
 
 type DirectMessagesScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -32,8 +32,13 @@ interface User {
 }
 
 interface Message {
+  id: string;
   content: string;
   createdAt: string;
+  read: boolean;
+  receiverId: string;
+  senderId: string;
+  conversationId: string;
 }
 
 interface Conversation {
@@ -43,6 +48,7 @@ interface Conversation {
   messages: Message[];
   user1: User;
   user2: User;
+  unreadCount: number;
 }
 
 const DirectMessages: React.FC = () => {
@@ -55,7 +61,7 @@ const DirectMessages: React.FC = () => {
   const [searchText, setSearchText] = useState("");
   const [loading, setLoading] = useState(true);
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const socket = useRef(null);
+  const socket = useRef<SocketIOClient.Socket | null>(null);
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -75,17 +81,84 @@ const DirectMessages: React.FC = () => {
 
     fetchUserData();
 
-    // 🔥 Conectar ao Socket.IO e ouvir eventos de usuários online
+    return () => {
+      if (socket.current) {
+        socket.current.disconnect();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    // Inicializa o socket após o userId ser definido
     socket.current = io(SOCKET_URL, { query: { userId } });
 
+    socket.current.on("connect", () => {
+      console.log("Socket conectado no DirectMessages:", socket.current?.id);
+
+      // Inscreve o usuário em todas as salas de conversas
+      conversations.forEach((conv) => {
+        socket.current?.emit("joinConversation", conv.id);
+        console.log(`Usuário ${userId} entrou na conversa ${conv.id}`);
+      });
+    });
+
     socket.current.on("userOnlineStatus", (onlineUserIds) => {
+      console.log("📡 Usuários online atualizados:", onlineUserIds);
       setOnlineUsers(onlineUserIds);
     });
 
+    socket.current.on("newMessage", (message: Message) => {
+      console.log("📥 Nova mensagem recebida no DirectMessages:", message);
+      setConversations((prev) => {
+        const updatedConversations = prev.map((conv) => {
+          if (conv.id === message.conversationId) {
+            const isNewMessageForUser = message.receiverId === userId && !message.read;
+            return {
+              ...conv,
+              messages: [message, ...conv.messages], // Adiciona a nova mensagem no início
+              unreadCount: isNewMessageForUser ? conv.unreadCount + 1 : conv.unreadCount,
+            };
+          }
+          return conv;
+        });
+
+        // Reordena as conversas para colocar a mais recente no topo
+        return updatedConversations.sort((a, b) => {
+          const lastMessageA = a.messages.length ? new Date(a.messages[0].createdAt).getTime() : 0;
+          const lastMessageB = b.messages.length ? new Date(b.messages[0].createdAt).getTime() : 0;
+          return lastMessageB - lastMessageA;
+        });
+      });
+    });
+
+    socket.current.on("messagesRead", ({ conversationId, userId: readerId }) => {
+      console.log(`📖 Mensagens marcadas como lidas na conversa ${conversationId} por ${readerId}`);
+      if (readerId === userId) {
+        setConversations((prev) =>
+          prev.map((conv) =>
+            conv.id === conversationId
+              ? {
+                  ...conv,
+                  unreadCount: 0, // Zera o contador de mensagens não lidas
+                  messages: conv.messages.map((msg) => ({
+                    ...msg,
+                    read: msg.receiverId === userId ? true : msg.read,
+                  })),
+                }
+              : conv
+          )
+        );
+      }
+    });
+
     return () => {
-      socket.current.disconnect();
+      if (socket.current) {
+        socket.current.disconnect();
+      }
     };
-  }, []);
+  }, [userId, conversations]);
 
   const fetchUsersAndConversations = async (storedUserId: string) => {
     try {
@@ -174,6 +247,22 @@ const DirectMessages: React.FC = () => {
           { headers: { Authorization: `Bearer ${token}` } }
         );
 
+        // Adiciona a nova conversa ao estado e inscreve o usuário na sala
+        const newConversation: Conversation = {
+          ...response.data,
+          messages: [],
+          user1: users.find((u) => u.id === userId) || { id: userId, usuario: "Eu" },
+          user2: selectedUser,
+          unreadCount: 0,
+        };
+        setConversations((prev) => [newConversation, ...prev]);
+        setFilteredList((prev) => [newConversation, ...prev.filter((item) => (item as User).id !== selectedUser.id)]);
+
+        if (socket.current) {
+          socket.current.emit("joinConversation", newConversation.id);
+          console.log(`Usuário ${userId} entrou na nova conversa ${newConversation.id}`);
+        }
+
         navigation.navigate("Chat", {
           conversationId: response.data.id,
           userId,
@@ -212,10 +301,11 @@ const DirectMessages: React.FC = () => {
               : (item as Conversation).user1Id === userId
               ? (item as Conversation).user2
               : (item as Conversation).user1;
+            const unreadCount = !isUser ? (item as Conversation).unreadCount : 0;
 
             return (
               <TouchableOpacity style={styles.conversationItem} onPress={() => openChat(user)}>
-                <View>
+                <View style={styles.avatarContainer}>
                   {user.avatar ? (
                     <Image source={{ uri: user.avatar }} style={styles.avatar} />
                   ) : (
@@ -226,9 +316,16 @@ const DirectMessages: React.FC = () => {
                 <View style={styles.textContainer}>
                   <Text style={styles.userName}>{user.usuario}</Text>
                   <Text style={styles.lastMessage} numberOfLines={1}>
-                    {!isUser && (item as Conversation).messages.length > 0 ? (item as Conversation).messages[0].content : "Iniciar conversa"}
+                    {!isUser && (item as Conversation).messages.length > 0
+                      ? (item as Conversation).messages[0].content
+                      : "Iniciar conversa"}
                   </Text>
                 </View>
+                {unreadCount > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{unreadCount}</Text>
+                  </View>
+                )}
               </TouchableOpacity>
             );
           }}
@@ -242,27 +339,26 @@ const DirectMessages: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
     backgroundColor: "#f8fafc",
+    paddingHorizontal: 16,
   },
   title: {
-    fontSize: 18,
+    fontSize: 24,
     fontWeight: "bold",
-    marginBottom: 10,
     color: "#1e293b",
+    marginVertical: 20,
   },
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#e2e8f0",
-    borderRadius: 24,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    marginBottom: 10,
+    backgroundColor: "#f1f5f9",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    marginBottom: 16,
   },
   searchInput: {
     flex: 1,
-    marginLeft: 10,
+    paddingVertical: 10,
     fontSize: 16,
     color: "#0f172a",
   },
@@ -273,6 +369,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#e2e8f0",
   },
+  avatarContainer: {
+    position: "relative",
+  },
   avatar: {
     width: 50,
     height: 50,
@@ -281,24 +380,38 @@ const styles = StyleSheet.create({
   },
   onlineIndicator: {
     position: "absolute",
-    bottom: 4,
-    right: 4,
+    bottom: 0,
+    right: 12,
+    borderWidth: 2,
+    borderColor: "#f8fafc",
+    borderRadius: 7,
   },
   textContainer: {
     flex: 1,
   },
   userName: {
     fontSize: 16,
-    fontWeight: "bold",
-    color: "#0f172a",
+    fontWeight: "600",
+    color: "#1e293b",
   },
   lastMessage: {
     fontSize: 14,
     color: "#64748b",
+    marginTop: 2,
   },
-  newChatMessage: {
-    fontStyle: "italic",
-    color: "#007AFF",
+  badge: {
+    backgroundColor: "#ff3b30",
+    borderRadius: 12,
+    minWidth: 24,
+    height: 24,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 6,
+  },
+  badgeText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "bold",
   },
 });
 

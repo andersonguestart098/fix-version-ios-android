@@ -11,6 +11,7 @@ import {
   Easing,
   Keyboard,
   Alert,
+  Linking,
 } from "react-native";
 import { SendHorizontal as SendHorizontal, Paperclip, Download } from "lucide-react-native"; // Adicionei o ícone Download
 import io from "socket.io-client";
@@ -28,7 +29,7 @@ import * as IntentLauncher from "expo-intent-launcher";
 import { RouteProp } from "@react-navigation/native";
 import { StackNavigationProp } from "@react-navigation/stack";
 
-const BASE_URL = "http://192.168.0.61:3001";
+const BASE_URL = "https://cemear-b549eb196d7c.herokuapp.com";
 
 // Definir o tipo das rotas da navegação
 type RootStackParamList = {
@@ -114,7 +115,7 @@ const Chat: React.FC<ChatProps> = ({ route }) => {
   useEffect(() => {
     if (!conversationId || !userId) return;
 
-    const newSocket = io("http://192.168.0.61:3001", { query: { userId } }); // Corrigido para o backend local
+    const newSocket = io("https://cemear-b549eb196d7c.herokuapp.com", { query: { userId } }); // Corrigido para o backend local
     setSocket(newSocket);
 
     newSocket.on("connect", () => {
@@ -277,36 +278,23 @@ const Chat: React.FC<ChatProps> = ({ route }) => {
     }
   };
 
-  const handleDownload = async (fileUrl: string, filename: string, mimetype?: string) => {
+  const handleDownload = async (fileUrl: string, filename: string) => {
     if (!fileUrl || !filename) {
       Alert.alert("Erro", "URL ou nome do arquivo não encontrado.");
       return;
     }
 
     try {
-      // Baixar o arquivo temporariamente para o cacheDirectory
-      const fileUri = `${FileSystem.cacheDirectory}${filename}`;
-      const downloadResumable = FileSystem.createDownloadResumable(fileUrl, fileUri);
-      const downloadedFile = await downloadResumable.downloadAsync();
-
-      if (!downloadedFile?.uri) {
-        Alert.alert("Erro", "Não foi possível baixar o arquivo.");
-        return;
-      }
-
-      // Verificar se o compartilhamento está disponível
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(downloadedFile.uri, {
-          mimeType: mimetype || "application/octet-stream", // Usa o mimetype passado ou um valor padrão
-          dialogTitle: `Salvar ou compartilhar ${filename}`,
-        });
+      // Abrir a URL diretamente no navegador padrão do dispositivo
+      const canOpen = await Linking.canOpenURL(fileUrl);
+      if (canOpen) {
+        await Linking.openURL(fileUrl);
       } else {
-        // Fallback caso o compartilhamento não esteja disponível
-        Alert.alert("Sucesso", `Arquivo baixado em: ${downloadedFile.uri}`);
+        Alert.alert("Erro", "Não foi possível abrir o link no navegador.");
       }
     } catch (error) {
-      console.error("Erro ao baixar arquivo:", error);
-      Alert.alert("Erro", "Não foi possível baixar o arquivo.");
+      console.error("Erro ao abrir o arquivo no navegador:", error);
+      Alert.alert("Erro", "Não foi possível abrir o arquivo no navegador.");
     }
   };
 
@@ -325,7 +313,7 @@ const Chat: React.FC<ChatProps> = ({ route }) => {
       // Extrai o nome do arquivo do content
       const filename = item.content.replace("Arquivo enviado: ", "");
       // Usa fileUrl se disponível, ou constrói com base no message.id
-      const fileUrl = item.fileUrl || `${BASE_URL}/files/${item.id}`;
+      const fileUrl = item.fileUrl || `${BASE_URL}${item.id}`;
 
       return (
         <TouchableOpacity
@@ -333,7 +321,7 @@ const Chat: React.FC<ChatProps> = ({ route }) => {
             styles.messageWrapper,
             isMyMessage ? styles.myMessageWrapper : styles.otherMessageWrapper,
           ]}
-          onPress={() => handleDownload(fileUrl, filename, item.mimetype)}
+          onPress={() => handleDownload(fileUrl, filename)}
         >
           <View
             style={[

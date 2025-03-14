@@ -21,6 +21,7 @@
     "@react-navigation/stack": "^6.3.0",
     "axios": "^1.8.2",
     "expo": "~51.0.38",
+    "expo-av": "~14.0.7",
     "expo-blur": "~13.0.3",
     "expo-constants": "~16.0.2",
     "expo-device": "~6.0.2",
@@ -57,8 +58,7 @@
     "react-native-svg": "15.2.0",
     "react-native-vector-icons": "^10.2.0",
     "socket.io-client": "^4.8.1",
-    "undefined": "react-native-async-storage/async-storage",
-    "expo-av": "~14.0.7"
+    "undefined": "react-native-async-storage/async-storage"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
@@ -69,6 +69,7 @@
     "@types/react": "~18.2.79",
     "@types/react-native-document-picker": "^3.1.0",
     "@types/react-navigation": "^3.4.0",
+    "@types/socket.io-client": "^1.4.36",
     "typescript": "~5.3.3"
   },
   "private": true
