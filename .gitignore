@@ -39,4 +39,4 @@ yarn-error.*
 
 /ios
 
-cemear-app-firebase-adminsdk-tcdcg-e1f71ebd0c.json
+android/app/google-services.json
