@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "220642565731",
+    "project_id": "cemear-app",
+    "storage_bucket": "cemear-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:220642565731:android:21dd29701dfd02b079e256",
+        "android_client_info": {
+          "package_name": "com.theanderson98.cemearapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB-NtfLGjeVJl7XUWRRNAF8F9aiB3GH_dA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
