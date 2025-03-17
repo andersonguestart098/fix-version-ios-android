@@ -1,12 +1,12 @@
 {
   "name": "cemearapp",
   "version": "1.0.0",
-  "main": "expo/AppEntry.js",
   "scripts": {
-    "start": "expo start",
+    "start": "expo start --dev-client",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "prebuild": "echo \"$GOOGLE_SERVICES_JSON\" | base64 --decode > android/app/google-services.json"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.0.4",
@@ -67,6 +67,7 @@
     "@types/expo__vector-icons": "^10.0.2",
     "@types/jwt-decode": "^2.2.1",
     "@types/react": "~18.2.79",
+    "@types/react-native": "^0.72.8",
     "@types/react-native-document-picker": "^3.1.0",
     "@types/react-navigation": "^3.4.0",
     "@types/socket.io-client": "^1.4.36",
