@@ -13,7 +13,7 @@ import {
   Alert,
   Linking,
 } from "react-native";
-import { SendHorizontal as SendHorizontal, Paperclip, Download } from "lucide-react-native"; // Adicionei o ícone Download
+import { SendHorizontal as SendHorizontal, Paperclip, Download } from "lucide-react-native";
 import io from "socket.io-client";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BlurView } from "expo-blur";
@@ -23,13 +23,10 @@ import axios from "axios";
 import { Ionicons } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
-import * as IntentLauncher from "expo-intent-launcher";
 
 // Tipagem para as props do componente Chat usando React Navigation
 import { RouteProp } from "@react-navigation/native";
 import { StackNavigationProp } from "@react-navigation/stack";
-
-const BASE_URL = "https://cemear-b549eb196d7c.herokuapp.com";
 
 // Definir o tipo das rotas da navegação
 type RootStackParamList = {
@@ -70,6 +67,13 @@ interface Message {
   receiver: User;
 }
 
+interface MessagesResponse {
+  messages: Message[];
+  total: number;
+  currentPage: number;
+  hasMore: boolean;
+}
+
 const Chat: React.FC<ChatProps> = ({ route }) => {
   if (!route.params) {
     return (
@@ -82,13 +86,18 @@ const Chat: React.FC<ChatProps> = ({ route }) => {
   const { conversationId, userId, receiverId } = route.params;
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
-  const [socket, setSocket] = useState(null);
+  const [socket, setSocket] = useState<SocketIOClient.Socket | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
-  const soundObjectRef = useRef(null);
+  const soundObjectRef = useRef<Audio.Sound | null>(null);
+  const limit = 20; // Limite de mensagens por página
 
   useEffect(() => {
     const loadSound = async () => {
@@ -114,23 +123,32 @@ const Chat: React.FC<ChatProps> = ({ route }) => {
 
   useEffect(() => {
     if (!conversationId || !userId) return;
-
-    const newSocket = io("https://cemear-b549eb196d7c.herokuapp.com", { query: { userId } }); // Corrigido para o backend local
+  
+    const newSocket = io("https://cemear-b549eb196d7c.herokuapp.com", {
+      path: "/socket.io",
+      query: { userId },
+      transports: ["websocket"],
+    });
+  
     setSocket(newSocket);
-
+  
     newSocket.on("connect", () => {
       console.log("Socket conectado!");
       newSocket.emit("joinConversation", conversationId);
     });
-
-    newSocket.on("newMessage", (message) => {
-      setMessages((prevMessages) => [...prevMessages, message]);
-      scrollToBottom();
+  
+    newSocket.on("newMessage", (message: Message) => {
+      setMessages((prevMessages) => {
+        const exists = prevMessages.some((msg) => msg.id === message.id);
+        return exists ? prevMessages : [message, ...prevMessages];
+      });
+  
+      // Toca o som somente se a mensagem recebida for de outra pessoa
       if (message.senderId !== userId) {
         playNotificationSound();
       }
     });
-
+  
     newSocket.on("messagesRead", ({ conversationId: convId, userId: readerId }) => {
       if (convId === conversationId && readerId === receiverId) {
         setMessages((prevMessages) =>
@@ -138,13 +156,14 @@ const Chat: React.FC<ChatProps> = ({ route }) => {
         );
       }
     });
-
-    fetchMessages();
-
+  
+    fetchMessages(true); // Carregar o primeiro lote ao iniciar
+  
     return () => {
       newSocket.disconnect();
     };
   }, [conversationId, userId]);
+  
 
   const playNotificationSound = async () => {
     if (soundObjectRef.current) {
@@ -159,44 +178,75 @@ const Chat: React.FC<ChatProps> = ({ route }) => {
     }
   };
 
-  const fetchMessages = useCallback(async () => {
-    try {
-      const token = await AsyncStorage.getItem("token");
-      if (!token) return;
+  const firstLoad = useRef(true);
 
-      const response = await fetch(`${BASE_URL}/conversations/${conversationId}/messages`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await response.json();
 
-      if (Array.isArray(data)) {
-        setMessages(data);
-        setTimeout(scrollToBottom, 100);
+  const fetchMessages = useCallback(
+    async (initialLoad = false) => {
+      if (isLoadingMore && !initialLoad) return;
+  
+      setIsLoadingMore(true);
+      try {
+        const token = await AsyncStorage.getItem("token");
+        const fetchPage = initialLoad ? 1 : page + 1;
+  
+        const response = await fetch(
+          `https://cemear-b549eb196d7c.herokuapp.com/conversations/${conversationId}/messages?page=${fetchPage}&limit=${limit}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+  
+        if (!response.ok) throw new Error("Falha ao carregar mensagens");
+  
+        const data = await response.json();
+  
+        if (initialLoad) {
+          setMessages(data.messages);
+          
+          // Executa o scroll automático APENAS no primeiro carregamento
+          if (firstLoad.current) {
+            setTimeout(() => {
+              scrollToBottom();
+            }, 100);
+            firstLoad.current = false;
+          }
+        } else {
+          setMessages((prevMessages) => [...prevMessages, ...data.messages]);
+        }
+  
+        setPage(fetchPage);
+        setHasMore(data.hasMore);
+  
+        if (data.messages.some((msg) => msg.receiverId === userId && !msg.read)) {
+          markMessagesAsRead();
+        }
+      } catch (error) {
+        console.error("Erro ao buscar mensagens:", error);
+        Alert.alert("Erro", "Não foi possível carregar as mensagens.");
+      } finally {
+        setLoading(false);
+        setIsLoadingMore(false);
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 500,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }).start();
       }
-
-      if (data.some((msg) => msg.receiverId === userId && !msg.read)) {
-        markMessagesAsRead();
-      }
-    } catch (error) {
-      console.error("Erro ao buscar mensagens:", error);
-      Alert.alert("Erro", "Não foi possível carregar as mensagens.");
-    } finally {
-      setLoading(false);
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 500,
-        easing: Easing.inOut(Easing.ease),
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [conversationId]);
+    },
+    [conversationId, page, isLoadingMore, limit]
+  );
+  
+  
+  
 
   const markMessagesAsRead = async () => {
     try {
       const token = await AsyncStorage.getItem("token");
       if (!token) return;
 
-      await fetch(`${BASE_URL}/conversations/${conversationId}/messages/read`, {
+      await fetch(`https://cemear-b549eb196d7c.herokuapp.com/conversations/${conversationId}/messages/read`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       });
@@ -211,25 +261,40 @@ const Chat: React.FC<ChatProps> = ({ route }) => {
   };
 
   const scrollToBottom = () => {
-    flatListRef.current?.scrollToEnd({ animated: true });
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: true }); // Offset 0 com inverted=true
+  };
+
+  const handleLoadMore = () => {
+    if (!isLoadingMore && hasMore) {
+      fetchMessages(false); // Carrega o próximo lote
+    }
   };
 
   const sendMessage = () => {
     if (!newMessage.trim() || !socket) return;
-
-    const messageData = {
+  
+    const messageData: Partial<Message> = {
       conversationId,
       senderId: userId,
       receiverId,
       content: newMessage,
+      createdAt: new Date().toISOString(),
+      read: false,
+      sender: { id: userId, usuario: "", avatar: null },
+      receiver: { id: receiverId, usuario: "", avatar: null },
+      id: `${Date.now()}-${Math.random()}`, // ID temporário até confirmação do backend
     };
-
-    socket.emit("sendMessage", messageData);
+  
+    // Atualiza localmente imediatamente
+    setMessages((prevMessages) => [messageData as Message, ...prevMessages]);
     setNewMessage("");
     Keyboard.dismiss();
+  
+    // Envia ao backend
+    socket.emit("sendMessage", messageData);
   };
+  
 
-  // Tipagem personalizada para o objeto de arquivo em React Native
   interface FileForUpload {
     uri: string;
     name: string;
@@ -243,7 +308,7 @@ const Chat: React.FC<ChatProps> = ({ route }) => {
         const file = result.assets[0];
         const formData = new FormData();
 
-        const fileForUpload: FileForUpload = {
+        const fileForUpload = {
           uri: file.uri,
           name: file.name || "uploaded_file",
           type: file.mimeType || "application/octet-stream",
@@ -254,24 +319,37 @@ const Chat: React.FC<ChatProps> = ({ route }) => {
         formData.append("senderId", userId);
         formData.append("receiverId", receiverId);
 
+        console.log("📤 Enviando FormData:", {
+          file: fileForUpload,
+          conversationId,
+          senderId: userId,
+          receiverId,
+        });
+
         setUploading(true);
         const token = await AsyncStorage.getItem("token");
-        const response = await axios.post(`${BASE_URL}/files/uploadChat`, formData, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "multipart/form-data",
-          },
-        });
+        const response = await axios.post(
+          `https://cemear-b549eb196d7c.herokuapp.com/files/uploadChat`,
+          formData,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "multipart/form-data",
+              Accept: "application/json",
+            },
+          }
+        );
+
+        console.log("✅ Resposta do upload:", response.data);
 
         if (response.status === 200) {
           Alert.alert("Sucesso", "Arquivo enviado com sucesso!");
-          fetchMessages();
         } else {
           Alert.alert("Erro", "Falha ao enviar o arquivo.");
         }
       }
     } catch (error) {
-      console.error("Erro ao fazer upload:", error);
+      console.error("❌ Erro ao fazer upload:", error.response?.data || error.message);
       Alert.alert("Erro", "Não foi possível enviar o arquivo.");
     } finally {
       setUploading(false);
@@ -285,15 +363,20 @@ const Chat: React.FC<ChatProps> = ({ route }) => {
     }
 
     try {
-      // Abrir a URL diretamente no navegador padrão do dispositivo
-      const canOpen = await Linking.canOpenURL(fileUrl);
+      const token = await AsyncStorage.getItem("token");
+      const urlWithToken = `${fileUrl}?token=${encodeURIComponent(token)}`;
+
+      console.log("📥 Abrindo arquivo no navegador:", urlWithToken);
+
+      const canOpen = await Linking.canOpenURL(urlWithToken);
       if (canOpen) {
-        await Linking.openURL(fileUrl);
+        await Linking.openURL(urlWithToken);
+        console.log("✅ Arquivo aberto no navegador com sucesso.");
       } else {
-        Alert.alert("Erro", "Não foi possível abrir o link no navegador.");
+        Alert.alert("Erro", "Não foi possível abrir o arquivo no navegador.");
       }
     } catch (error) {
-      console.error("Erro ao abrir o arquivo no navegador:", error);
+      console.error("❌ Erro ao abrir o arquivo:", error);
       Alert.alert("Erro", "Não foi possível abrir o arquivo no navegador.");
     }
   };
@@ -306,70 +389,17 @@ const Chat: React.FC<ChatProps> = ({ route }) => {
     });
     const checkColor = item.read ? "#00AEEF" : "#64748b";
 
-    // Verifica se há um anexo (content começando com "Arquivo enviado:")
     const hasAttachment = item.content?.startsWith("Arquivo enviado:");
-
-    if (hasAttachment) {
-      // Extrai o nome do arquivo do content
-      const filename = item.content.replace("Arquivo enviado: ", "");
-      // Usa fileUrl se disponível, ou constrói com base no message.id
-      const fileUrl = item.fileUrl || `${BASE_URL}${item.id}`;
-
-      return (
-        <TouchableOpacity
-          style={[
-            styles.messageWrapper,
-            isMyMessage ? styles.myMessageWrapper : styles.otherMessageWrapper,
-          ]}
-          onPress={() => handleDownload(fileUrl, filename)}
-        >
-          <View
-            style={[
-              styles.messageContainer,
-              isMyMessage ? styles.myMessage : styles.otherMessage,
-            ]}
-          >
-            <BlurView
-              intensity={isMyMessage ? 40 : 60}
-              tint={isMyMessage ? "default" : "light"}
-              style={styles.messageBlur}
-            >
-              <Ionicons name="document-text" size={20} color="#00AEEF" style={styles.fileIcon} />
-              <Text
-                style={[
-                  styles.messageText,
-                  isMyMessage ? styles.myMessageText : styles.otherMessageText,
-                ]}
-              >
-                {filename} (Anexo)
-              </Text>
-              <View style={styles.messageFooter}>
-                <Text
-                  style={[
-                    styles.messageTime,
-                    isMyMessage ? styles.myMessageTime : styles.otherMessageTime,
-                  ]}
-                >
-                  {messageTime}
-                </Text>
-                {isMyMessage && (
-                  <View style={styles.checkIcon}>
-                    <Ionicons name="checkmark-done" size={16} color={checkColor} />
-                  </View>
-                )}
-              </View>
-            </BlurView>
-          </View>
-        </TouchableOpacity>
-      );
-    }
+    const filename = hasAttachment ? item.content.replace("Arquivo enviado: ", "") : null;
+    const fileUrl = item.fileUrl || `https://cemear-b549eb196d7c.herokuapp.com/files/${item.id}`;
 
     return (
-      <View
+      <TouchableOpacity
         style={[
           styles.messageWrapper,
           isMyMessage ? styles.myMessageWrapper : styles.otherMessageWrapper,
         ]}
+        onPress={hasAttachment ? () => handleDownload(fileUrl, filename) : undefined}
       >
         <View
           style={[
@@ -382,14 +412,28 @@ const Chat: React.FC<ChatProps> = ({ route }) => {
             tint={isMyMessage ? "default" : "light"}
             style={styles.messageBlur}
           >
-            <Text
-              style={[
-                styles.messageText,
-                isMyMessage ? styles.myMessageText : styles.otherMessageText,
-              ]}
-            >
-              {item.content}
-            </Text>
+            {hasAttachment ? (
+              <>
+                <Ionicons name="document-text" size={20} color="#00AEEF" style={styles.fileIcon} />
+                <Text
+                  style={[
+                    styles.messageText,
+                    isMyMessage ? styles.myMessageText : styles.otherMessageText,
+                  ]}
+                >
+                  {filename} (Anexo)
+                </Text>
+              </>
+            ) : (
+              <Text
+                style={[
+                  styles.messageText,
+                  isMyMessage ? styles.myMessageText : styles.otherMessageText,
+                ]}
+              >
+                {item.content}
+              </Text>
+            )}
             <View style={styles.messageFooter}>
               <Text
                 style={[
@@ -407,6 +451,24 @@ const Chat: React.FC<ChatProps> = ({ route }) => {
             </View>
           </BlurView>
         </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderHeader = () => {
+    if (!isLoadingMore) return null;
+    return (
+      <View style={styles.loader}>
+        <ActivityIndicator size="small" color="#00AEEF" />
+      </View>
+    );
+  };
+
+  const renderFooter = () => {
+    if (!isLoadingMore) return null;
+    return (
+      <View style={styles.loader}>
+        <ActivityIndicator size="small" color="#00AEEF" />
       </View>
     );
   };
@@ -414,17 +476,22 @@ const Chat: React.FC<ChatProps> = ({ route }) => {
   return (
     <View style={styles.container}>
       {loading ? (
-        <ActivityIndicator size="large" color="#00AEEF" />
+        <ActivityIndicator size="large" color="#00AEEF" style={styles.loader} />
       ) : (
         <Animated.View style={[styles.chatContainer, { opacity: fadeAnim }]}>
           <FlatList
+            inverted={true}
             ref={flatListRef}
             data={messages}
             renderItem={renderItem}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.messagesList}
             showsVerticalScrollIndicator={false}
-            onContentSizeChange={scrollToBottom}
+            onEndReached={() => {
+              if (hasMore) handleLoadMore();
+            }}
+            onEndReachedThreshold={0.2}
+            ListFooterComponent={renderFooter}
           />
           <View style={styles.inputContainer}>
             <TextInput
@@ -606,19 +673,9 @@ const styles = StyleSheet.create({
   fileIcon: {
     marginBottom: 8,
   },
-  downloadButton: {
-    flexDirection: "row",
+  loader: {
+    paddingVertical: 10,
     alignItems: "center",
-    backgroundColor: "rgba(0, 174, 239, 0.2)",
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 12,
-    marginTop: 8,
-  },
-  downloadButtonText: {
-    color: "#00AEEF",
-    fontSize: 14,
-    marginLeft: 4,
   },
 });
 

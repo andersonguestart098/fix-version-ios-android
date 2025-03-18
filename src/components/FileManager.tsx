@@ -19,9 +19,7 @@ import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 import { Ionicons } from "@expo/vector-icons";
 import * as IntentLauncher from "expo-intent-launcher";
-import AsyncStorage from "@react-native-async-storage/async-storage"; // 🔥 Importa AsyncStorage
-
-const BASE_URL = "https://cemear-b549eb196d7c.herokuapp.com";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 interface FileType {
   id: string;
@@ -46,7 +44,7 @@ const FileManager: React.FC = () => {
   const fetchFiles = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${BASE_URL}/files`);
+      const response = await axios.get(`https://cemear-b549eb196d7c.herokuapp.com/files`);
 
       if (response.data && typeof response.data === "object") {
         setFiles(response.data);
@@ -91,7 +89,7 @@ const FileManager: React.FC = () => {
         formData.append("folder", targetFolder);
 
         setUploading(true);
-        await axios.post(`${BASE_URL}/files/upload`, formData, {
+        await axios.post("https://cemear-b549eb196d7c.herokuapp.com/files/upload", formData, {
           headers: { "Content-Type": "multipart/form-data" },
         });
 
@@ -112,40 +110,26 @@ const FileManager: React.FC = () => {
       Alert.alert("Erro", "Arquivo não encontrado. Verifique o ID.");
       return;
     }
-
+  
     try {
-      const downloadUrl = `${BASE_URL}/files/download/${file.id}`;
-      const fileUri = `${FileSystem.documentDirectory}${file.originalname}`;
-
-      const response = await axios.get(downloadUrl, { responseType: "arraybuffer" });
-      const base64Data = Buffer.from(response.data, "binary").toString("base64");
-
-      await FileSystem.writeAsStringAsync(fileUri, base64Data, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-
-      Alert.alert("Sucesso", `Arquivo salvo em: ${fileUri}`);
-
-      if (file.mimetype.includes("pdf")) {
-        if (Platform.OS === "android") {
-          const uri = await FileSystem.getContentUriAsync(fileUri);
-          IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
-            data: uri,
-            flags: 1,
-          });
-        } else {
-          Linking.openURL(fileUri);
-        }
-      } else if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(fileUri, {
-          mimeType: file.mimetype,
-          dialogTitle: `Compartilhar ${file.originalname}`,
-        });
+      const token = await AsyncStorage.getItem("token");
+      if (!token) {
+        Alert.alert("Erro", "Token de autenticação não encontrado.");
+        return;
+      }
+  
+      const downloadUrl = `https://cemear-b549eb196d7c.herokuapp.com/files/download/${file.id}?token=${encodeURIComponent(token)}`;
+      console.log("📥 Abrindo arquivo no navegador:", downloadUrl);
+  
+      const canOpen = await Linking.canOpenURL(downloadUrl);
+      if (canOpen) {
+        await Linking.openURL(downloadUrl);
+        console.log("✅ Arquivo aberto no navegador com sucesso.");
       } else {
-        Alert.alert("Sucesso", `Arquivo baixado e salvo em: ${fileUri}`);
+        Alert.alert("Erro", "Não foi possível abrir o arquivo no navegador.");
       }
     } catch (error) {
-      console.error("Erro ao baixar arquivo:", error);
+      console.error("❌ Erro ao baixar arquivo:", error);
       Alert.alert("Erro", "Não foi possível baixar o arquivo.");
     }
   };

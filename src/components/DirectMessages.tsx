@@ -222,14 +222,17 @@ const DirectMessages: React.FC = () => {
 
   const openChat = async (selectedUser: User) => {
     if (!userId) return;
-
+  
     const existingConversation = conversations.find(
       (conv) =>
         (conv.user1Id === userId && conv.user2Id === selectedUser.id) ||
         (conv.user2Id === userId && conv.user1Id === selectedUser.id)
     );
-
+  
     if (existingConversation) {
+      // ✅ Marcar mensagens como lidas antes de navegar
+      await markMessagesAsRead(existingConversation.id);
+  
       navigation.navigate("Chat", {
         conversationId: existingConversation.id,
         userId,
@@ -240,14 +243,13 @@ const DirectMessages: React.FC = () => {
       try {
         const token = await AsyncStorage.getItem("token");
         if (!token) return;
-
+  
         const response = await axios.post(
           `${SOCKET_URL}/conversations`,
           { user2Id: selectedUser.id },
           { headers: { Authorization: `Bearer ${token}` } }
         );
-
-        // Adiciona a nova conversa ao estado e inscreve o usuário na sala
+  
         const newConversation: Conversation = {
           ...response.data,
           messages: [],
@@ -255,14 +257,15 @@ const DirectMessages: React.FC = () => {
           user2: selectedUser,
           unreadCount: 0,
         };
+  
         setConversations((prev) => [newConversation, ...prev]);
         setFilteredList((prev) => [newConversation, ...prev.filter((item) => (item as User).id !== selectedUser.id)]);
-
+  
         if (socket.current) {
           socket.current.emit("joinConversation", newConversation.id);
           console.log(`Usuário ${userId} entrou na nova conversa ${newConversation.id}`);
         }
-
+  
         navigation.navigate("Chat", {
           conversationId: response.data.id,
           userId,
@@ -273,6 +276,79 @@ const DirectMessages: React.FC = () => {
       }
     }
   };
+
+  const fetchInitialUnreadCount = async () => {
+    try {
+      const token = await AsyncStorage.getItem("token");
+      const userId = await AsyncStorage.getItem("userId");
+      if (!token || !userId) {
+        console.error("❌ Token ou userId não encontrados:", { token, userId });
+        return;
+      }
+  
+      console.log("🔍 Buscando conversas para contar mensagens não lidas...");
+  
+      const response = await fetch(`${SOCKET_URL}/conversations`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+  
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ Erro na resposta do servidor: ${response.status} - ${errorText}`);
+        return;
+      }
+  
+      const conversations: Conversation[] = await response.json();
+      console.log("📋 Conversas recebidas:", conversations);
+  
+      const totalUnread = conversations.reduce(
+        (sum, conv) => sum + (conv.unreadCount || 0), // Garante que `unreadCount` tenha um valor válido
+        0
+      );
+  
+      console.log("✅ Total de mensagens não lidas calculado:", totalUnread);
+    } catch (error) {
+      console.error("❌ Erro ao buscar contagem inicial de mensagens não lidas:", error.message);
+    }
+  };
+  
+  
+  // ✅ Função para marcar mensagens como lidas no backend
+  const markMessagesAsRead = async (conversationId: string) => {
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return;
+  
+      await axios.post(
+        `${SOCKET_URL}/conversations/${conversationId}/messages/read`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+  
+      console.log(`📖 Mensagens da conversa ${conversationId} marcadas como lidas.`);
+  
+      // Atualiza a lista de conversas, zerando unreadCount da conversa aberta
+      setConversations((prev) =>
+        prev.map((conv) =>
+          conv.id === conversationId ? { ...conv, unreadCount: 0 } : conv
+        )
+      );
+  
+      // Emite o evento para o socket
+      if (socket.current) {
+        socket.current.emit("messagesRead", { conversationId, userId });
+      }
+  
+      // Atualiza o contador global de mensagens não lidas no FeedScreen
+      fetchInitialUnreadCount();
+    } catch (error) {
+      console.error("❌ Erro ao marcar mensagens como lidas:", error);
+    }
+  };
+  
 
   return (
     <View style={styles.container}>

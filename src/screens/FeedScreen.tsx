@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   SafeAreaView,
   View,
@@ -13,122 +13,202 @@ import Feed from "../components/Feed";
 import PostForm from "../components/PostForm";
 import NavButton from "../components/botoesNav";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useIsFocused } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../types";
+import io from "socket.io-client";
+
+const SOCKET_URL = "https://cemear-b549eb196d7c.herokuapp.com";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+
+interface Conversation {
+  id: string;
+  unreadCount: number;
+}
+
+interface Message {
+  id: string;
+  conversationId: string;
+  receiverId: string;
+  read: boolean;
+}
 
 const FeedScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const [showPostForm, setShowPostForm] = useState(false);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [tipoUsuario, setTipoUsuario] = useState<string | null>(null);
+  const [unreadMessages, setUnreadMessages] = useState<number>(0);
+  const socket = useRef<SocketIOClient.Socket | null>(null);
+  const isFocused = useIsFocused();
 
+  const fetchInitialUnreadCount = async () => {
+    try {
+      const token = await AsyncStorage.getItem("token");
+      const userId = await AsyncStorage.getItem("userId");
+      if (!token || !userId) {
+        console.error("❌ Token ou userId não encontrados:", { token, userId });
+        return;
+      }
+
+      console.log("🔍 Buscando contagem inicial de mensagens não lidas...");
+      const response = await fetch(`${SOCKET_URL}/conversations`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ Erro na resposta do servidor: ${response.status} - ${errorText}`);
+        return;
+      }
+
+      const conversations: Conversation[] = await response.json();
+      const totalUnread = conversations.reduce((sum, conv) => sum + conv.unreadCount, 0);
+      console.log("✅ Contagem inicial de mensagens não lidas:", totalUnread);
+      setUnreadMessages(totalUnread);
+    } catch (error) {
+      console.error("❌ Erro ao buscar contagem inicial:", error.message);
+    }
+  };
 
   useEffect(() => {
     const fetchTipoUsuario = async () => {
       const tipo = await AsyncStorage.getItem("tipoUsuario");
+      console.log("📋 Tipo de usuário obtido:", tipo);
       setTipoUsuario(tipo);
     };
     fetchTipoUsuario();
+
+    const initializeSocket = async () => {
+      const userId = await AsyncStorage.getItem("userId");
+      const token = await AsyncStorage.getItem("token");
+      if (!userId || !token) {
+        console.error("❌ Usuário não autenticado ou token não encontrado");
+        return;
+      }
+
+      console.log("👤 Conectando socket para userId:", userId);
+      socket.current = io(SOCKET_URL, {
+        path: "/socket.io",
+        query: { userId },
+        auth: { token },
+        transports: ["websocket"],
+      });
+
+      socket.current.on("connect", () => {
+        console.log("✅ Socket conectado com sucesso no FeedScreen!");
+      });
+
+      socket.current.on("connect_error", (error) => {
+        console.error("❌ Erro ao conectar socket:", error.message);
+      });
+
+      socket.current.on("newMessage", (message: Message) => {
+        console.log("📥 Nova mensagem recebida via socket:", message);
+        if (message.receiverId === userId && !message.read) {
+          setUnreadMessages((prev) => {
+            const newCount = prev + 1;
+            console.log("📈 Contagem de mensagens não lidas atualizada para:", newCount);
+            return newCount;
+          });
+        } else {
+          console.log("📩 Mensagem ignorada (não é para este usuário ou já lida):", {
+            receiverId: message.receiverId,
+            userId,
+            read: message.read,
+          });
+        }
+      });
+
+      socket.current.on("messagesRead", ({ conversationId, userId: readerId }) => {
+        console.log(`📖 Mensagens lidas na conversa ${conversationId} por ${readerId}`);
+        if (readerId === userId) {
+          fetchInitialUnreadCount();
+        }
+      });
+
+      fetchInitialUnreadCount();
+
+      return () => {
+        if (socket.current) {
+          console.log("🔌 Desconectando socket do FeedScreen...");
+          socket.current.disconnect();
+        }
+      };
+    };
+
+    initializeSocket();
+
+    return () => {
+      if (socket.current) {
+        socket.current.off("connect");
+        socket.current.off("connect_error");
+        socket.current.off("newMessage");
+        socket.current.off("messagesRead");
+        socket.current.disconnect();
+      }
+    };
   }, []);
 
-  const openCalendar = (screen: string) => {
-    console.log(`Abrindo calendário: ${screen}`);
-    setShowCalendarModal(false);
-    navigation.navigate(screen as never);
-  };
-
-  const openFileManager = () => {
-    navigation.navigate("FileManager" as never);
-  };
-  
+  useEffect(() => {
+    if (isFocused) {
+      console.log("🔄 Tela FeedScreen em foco, atualizando contagem...");
+      fetchInitialUnreadCount();
+    }
+  }, [isFocused]);
 
   const openChat = async () => {
-    const userId = await AsyncStorage.getItem("userId");
-    if (!userId) {
-      console.error("Usuário não autenticado");
-      return;
-    }
-  
     console.log("🗣️ Navegando para DirectMessages");
     navigation.navigate("DirectMessages");
   };
-  
 
   return (
     <SafeAreaView style={styles.container}>
       <Navbar />
       <Feed />
-
-      {/* Modal para o PostForm */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={showPostForm}
-        onRequestClose={() => setShowPostForm(false)}
-      >
-        <View style={styles.modalContainer}>
-          <PostForm onClose={() => setShowPostForm(false)} />
-        </View>
-      </Modal>
-
-      {/* Modal para o Calendário */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={showCalendarModal}
-        onRequestClose={() => setShowCalendarModal(false)}
-      >
-        <TouchableWithoutFeedback onPress={() => setShowCalendarModal(false)}>
-          <View style={styles.calendarModalOverlay}>
-            <View style={styles.calendarModal}>
-              <Text style={styles.modalTitle}>Escolha o Calendário</Text>
-
-              <TouchableOpacity
-                style={styles.calendarOption}
-                onPress={() => openCalendar("CalendarEvents")}
-              >
-                <Ionicons name="calendar-outline" size={24} color="black" />
-                <Text style={styles.optionText}>Calendário de Eventos</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.calendarOption}
-                onPress={() => openCalendar("CalendarHolidays")}
-              >
-                <Ionicons name="calendar-outline" size={24} color="black" />
-                <Text style={styles.optionText}>Calendário de Férias</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.calendarOption}
-                onPress={() => openCalendar("CalendarBirthdays")}
-              >
-                <Ionicons name="calendar-outline" size={24} color="black" />
-                <Text style={styles.optionText}>Calendário de Aniversários</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={() => setShowCalendarModal(false)}
-              >
-                <Text style={styles.closeButtonText}>Fechar</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
-
-      {/* Botões de navegação na parte inferior */}
       <View style={styles.footerButtons}>
-        <NavButton iconName="download-outline" onPress={openFileManager} />
+        <NavButton iconName="download-outline" onPress={() => navigation.navigate("FileManager")} />
         {tipoUsuario === "admin" && (
           <NavButton iconName="add-circle-outline" onPress={() => setShowPostForm(true)} />
         )}
         <NavButton iconName="calendar-outline" onPress={() => setShowCalendarModal(true)} />
-        <NavButton iconName="chatbubble-outline" onPress={openChat} />
+        <NavButton
+          iconName="chatbubble-outline"
+          onPress={openChat}
+          badgeCount={unreadMessages}
+        />
       </View>
+
+      <Modal visible={showPostForm} animationType="slide" transparent={true}>
+        <TouchableWithoutFeedback onPress={() => setShowPostForm(false)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.modalContent}>
+                <PostForm onClose={() => setShowPostForm(false)} />
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      <Modal visible={showCalendarModal} animationType="slide" transparent={true}>
+        <TouchableWithoutFeedback onPress={() => setShowCalendarModal(false)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.modalContent}>
+                <Text>Calendário ainda não implementado</Text>
+                <TouchableOpacity onPress={() => setShowCalendarModal(false)}>
+                  <Text style={styles.closeButton}>Fechar</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -150,56 +230,25 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: 65, 
+    height: 65,
   },
-  modalContainer: {
+  modalOverlay: {
     flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
   },
-  calendarModalOverlay: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-  },
-  calendarModal: {
+  modalContent: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 10,
     padding: 20,
+    borderRadius: 10,
     width: "80%",
-    alignItems: "center",
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    marginBottom: 20,
-  },
-  calendarOption: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E0E0E0",
-    width: "100%",
-  },
-  optionText: {
-    fontSize: 16,
-    color: "#007AFF",
-    marginLeft: 10,
+    maxHeight: "80%",
   },
   closeButton: {
-    marginTop: 20,
-    padding: 10,
-    backgroundColor: "#007AFF",
-    borderRadius: 8,
-    width: "100%",
-    alignItems: "center",
-  },
-  closeButtonText: {
-    color: "#FFFFFF",
-    fontSize: 16,
+    color: "#007AFF",
+    marginTop: 10,
+    textAlign: "center",
   },
 });
 

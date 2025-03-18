@@ -68,6 +68,7 @@ const Feed: React.FC = () => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [reactingPostId, setReactingPostId] = useState<string | null>(null);
+  
 
   const fetchPosts = async (pageNumber = 1) => {
     if (loadingMore || !hasMore) return; // Impede chamadas duplicadas ou desnecessárias
