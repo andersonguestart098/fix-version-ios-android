@@ -39,8 +39,6 @@ Notifications.setNotificationHandler({
 });
 
 
-
-
 const App: React.FC = () => {
   const [fontsLoaded, setFontsLoaded] = useState(false);
   const [initialRoute, setInitialRoute] = useState<"Login" | "Feed">("Login");

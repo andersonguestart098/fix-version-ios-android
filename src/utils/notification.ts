@@ -6,82 +6,86 @@ import axios from "axios";
 
 const BASE_URL = "https://cemear-b549eb196d7c.herokuapp.com";
 
-// Registra notificações push com validações apropriadas
+// Função para registrar notificações push no Expo e FCM
 export const registerForPushNotificationsAsync = async (): Promise<boolean> => {
   try {
-    console.log("Solicitando permissões para notificações...");
+    console.log("🔔 Solicitando permissões para notificações...");
 
     if (!Device.isDevice) {
-      console.warn("Notificações push não são suportadas em emuladores.");
+      console.warn("❌ Notificações push não são suportadas em emuladores.");
       return false;
     }
 
-    // Verifica se a permissão já foi concedida anteriormente
+    // Verifica permissões
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
 
     if (existingStatus !== "granted") {
-      console.log("Solicitando permissões ao usuário...");
+      console.log("🔓 Solicitando permissões ao usuário...");
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
     }
 
     if (finalStatus !== "granted") {
-      console.warn("Permissão para notificações push não foi concedida.");
+      console.warn("❌ Permissão para notificações push não foi concedida.");
       return false;
     }
 
-    console.log("Permissões concedidas! Verificando token...");
+    console.log("✅ Permissões concedidas! Gerando token...");
+    const { expoPushToken, firebaseToken } = await getPushToken();
 
-    // Sempre gera um novo token ao invés de reutilizar para garantir validade
-    const newToken = await generateAndSaveNewToken();
-    if (!newToken) {
-      console.error("Falha ao obter um token válido.");
+    if (!expoPushToken && !firebaseToken) {
+      console.error("⚠️ Falha ao obter um token válido.");
       return false;
     }
 
     const userId = await AsyncStorage.getItem("userId");
     if (!userId) {
-      console.warn("Usuário não autenticado. Token não será enviado.");
+      console.warn("⚠️ Usuário não autenticado. Token não será enviado.");
       return false;
     }
 
     const deviceName = Device.deviceName || "Desconhecido";
     const devicePlatform = Platform.OS;
 
-    console.log("Enviando token atualizado para o backend...");
+    console.log("📡 Enviando token atualizado para o backend...");
     await axios.post(`${BASE_URL}/registerPushToken`, {
       userId,
-      firebaseToken: newToken,
+      firebaseToken, // Apenas para Android
+      expoPushToken, // Apenas para iOS
       deviceName,
       devicePlatform,
     });
 
-    console.log("Token enviado com sucesso para o backend.");
+    console.log("✅ Token enviado com sucesso para o backend.");
     return true;
   } catch (error) {
-    console.error("Erro ao registrar notificações push:", error);
+    console.error("❌ Erro ao registrar notificações push:", error);
     return false;
   }
 };
 
-const generateAndSaveNewToken = async (): Promise<string | null> => {
+// Obtém ou gera um novo push token
+const getPushToken = async (): Promise<{ expoPushToken: string | null; firebaseToken: string | null }> => {
   try {
-    let tokenData;
+    let expoPushToken = null;
+    let firebaseToken = null;
+
     if (Platform.OS === "android") {
-      tokenData = await Notifications.getDevicePushTokenAsync();
-    } else {
-      tokenData = await Notifications.getExpoPushTokenAsync();
+      console.log("📌 Obtendo Firebase Cloud Messaging Token...");
+      firebaseToken = (await Notifications.getDevicePushTokenAsync()).data;
+      await AsyncStorage.setItem("firebasePushToken", firebaseToken);
+    } else if (Platform.OS === "ios") {
+      console.log("📌 Obtendo Expo Push Token...");
+      expoPushToken = (await Notifications.getExpoPushTokenAsync()).data;
+      await AsyncStorage.setItem("expoPushToken", expoPushToken);
     }
 
-    const newToken = tokenData.data;
-    console.log("Novo token gerado:", newToken);
+    console.log("📌 Token gerado:", { expoPushToken, firebaseToken });
 
-    // Armazena sempre o novo token
-    await AsyncStorage.setItem("firebasePushToken", newToken);
-    return newToken;
+    return { expoPushToken, firebaseToken };
   } catch (error) {
-    console.error("Erro ao gerar novo token:", error);
-    return null;
+    console.error("❌ Erro ao gerar novo token:", error);
+    return { expoPushToken: null, firebaseToken: null };
   }
 };

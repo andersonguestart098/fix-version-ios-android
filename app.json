@@ -13,7 +13,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.theanderson98.cemearapp",
+      "bundleIdentifier": "com.theanderson98.CemearApp",
       "icon": "./assets/icon.png",
       "buildNumber": "17",
       "infoPlist": {
