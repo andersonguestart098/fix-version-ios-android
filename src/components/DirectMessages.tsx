@@ -15,7 +15,7 @@ import axios from "axios";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../types";
-import { UserCircle, Search, Circle } from "lucide-react-native";
+import { UserCircle, Search } from "lucide-react-native";
 import io from "socket.io-client";
 
 const SOCKET_URL = "https://cemear-b549eb196d7c.herokuapp.com";
@@ -91,13 +91,10 @@ const DirectMessages: React.FC = () => {
   useEffect(() => {
     if (!userId) return;
 
-    // Inicializa o socket após o userId ser definido
     socket.current = io(SOCKET_URL, { query: { userId } });
 
     socket.current.on("connect", () => {
       console.log("Socket conectado no DirectMessages:", socket.current?.id);
-
-      // Inscreve o usuário em todas as salas de conversas
       conversations.forEach((conv) => {
         socket.current?.emit("joinConversation", conv.id);
         console.log(`Usuário ${userId} entrou na conversa ${conv.id}`);
@@ -117,14 +114,12 @@ const DirectMessages: React.FC = () => {
             const isNewMessageForUser = message.receiverId === userId && !message.read;
             return {
               ...conv,
-              messages: [message, ...conv.messages], // Adiciona a nova mensagem no início
+              messages: [message, ...conv.messages],
               unreadCount: isNewMessageForUser ? conv.unreadCount + 1 : conv.unreadCount,
             };
           }
           return conv;
         });
-
-        // Reordena as conversas para colocar a mais recente no topo
         return updatedConversations.sort((a, b) => {
           const lastMessageA = a.messages.length ? new Date(a.messages[0].createdAt).getTime() : 0;
           const lastMessageB = b.messages.length ? new Date(b.messages[0].createdAt).getTime() : 0;
@@ -141,7 +136,7 @@ const DirectMessages: React.FC = () => {
             conv.id === conversationId
               ? {
                   ...conv,
-                  unreadCount: 0, // Zera o contador de mensagens não lidas
+                  unreadCount: 0,
                   messages: conv.messages.map((msg) => ({
                     ...msg,
                     read: msg.receiverId === userId ? true : msg.read,
@@ -175,7 +170,6 @@ const DirectMessages: React.FC = () => {
         }),
       ]);
 
-      // Ordenar conversas pela última mensagem mais recente
       const sortedConversations = conversationsResponse.data.sort((a: Conversation, b: Conversation) => {
         const lastMessageA = a.messages.length ? new Date(a.messages[0].createdAt).getTime() : 0;
         const lastMessageB = b.messages.length ? new Date(b.messages[0].createdAt).getTime() : 0;
@@ -184,22 +178,18 @@ const DirectMessages: React.FC = () => {
 
       setConversations(sortedConversations);
 
-      // Filtrar usuários que ainda não têm conversa
       const conversationUserIds = sortedConversations.flatMap((conv) => [conv.user1Id, conv.user2Id]);
       const usersWithoutConversation = usersResponse.data.filter(
         (user: User) => user.id !== storedUserId && !conversationUserIds.includes(user.id)
       );
 
       setUsers(usersWithoutConversation);
-
-      // Atualizar a lista de exibição
       setFilteredList([...sortedConversations, ...usersWithoutConversation]);
     } catch (error) {
       console.error("❌ Erro ao buscar dados:", error);
     }
   };
 
-  // 🔍 Filtragem de busca
   useEffect(() => {
     if (!searchText.trim()) {
       setFilteredList([...conversations, ...users]);
@@ -230,9 +220,7 @@ const DirectMessages: React.FC = () => {
     );
   
     if (existingConversation) {
-      // ✅ Marcar mensagens como lidas antes de navegar
       await markMessagesAsRead(existingConversation.id);
-  
       navigation.navigate("Chat", {
         conversationId: existingConversation.id,
         userId,
@@ -305,7 +293,7 @@ const DirectMessages: React.FC = () => {
       console.log("📋 Conversas recebidas:", conversations);
   
       const totalUnread = conversations.reduce(
-        (sum, conv) => sum + (conv.unreadCount || 0), // Garante que `unreadCount` tenha um valor válido
+        (sum, conv) => sum + (conv.unreadCount || 0),
         0
       );
   
@@ -315,8 +303,6 @@ const DirectMessages: React.FC = () => {
     }
   };
   
-  
-  // ✅ Função para marcar mensagens como lidas no backend
   const markMessagesAsRead = async (conversationId: string) => {
     try {
       const token = await AsyncStorage.getItem("token");
@@ -330,25 +316,21 @@ const DirectMessages: React.FC = () => {
   
       console.log(`📖 Mensagens da conversa ${conversationId} marcadas como lidas.`);
   
-      // Atualiza a lista de conversas, zerando unreadCount da conversa aberta
       setConversations((prev) =>
         prev.map((conv) =>
           conv.id === conversationId ? { ...conv, unreadCount: 0 } : conv
         )
       );
   
-      // Emite o evento para o socket
       if (socket.current) {
         socket.current.emit("messagesRead", { conversationId, userId });
       }
   
-      // Atualiza o contador global de mensagens não lidas no FeedScreen
       fetchInitialUnreadCount();
     } catch (error) {
       console.error("❌ Erro ao marcar mensagens como lidas:", error);
     }
   };
-  
 
   return (
     <View style={styles.container}>
@@ -387,7 +369,9 @@ const DirectMessages: React.FC = () => {
                   ) : (
                     <UserCircle size={50} color="#A0A0A0" />
                   )}
-                  {isUserOnline(user.id) && <Circle size={14} color="#32CD32" style={styles.onlineIndicator} />}
+                  {isUserOnline(user.id) && (
+                    <View style={styles.onlineIndicator} />
+                  )}
                 </View>
                 <View style={styles.textContainer}>
                   <Text style={styles.userName}>{user.usuario}</Text>
@@ -458,8 +442,9 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 0,
     right: 12,
-    borderWidth: 2,
-    borderColor: "#f8fafc",
+    width: 14,
+    height: 14,
+    backgroundColor: "#03fc3d",
     borderRadius: 7,
   },
   textContainer: {

@@ -2,7 +2,7 @@
   "expo": {
     "name": "CemearApp",
     "slug": "CemearApp",
-    "version": "1.0.0",
+    "version": "1.0.6",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -15,16 +15,20 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.theanderson98.CemearApp",
       "icon": "./assets/icon.png",
-      "buildNumber": "17",
+      "buildNumber": "45",
       "infoPlist": {
-        "UIBackgroundModes": ["remote-notification"],
-        "UIRequiredDeviceCapabilities": [
-          "armv7",
-          "location-services",
-          "gps",
-          "accelerometer"
+        "UIBackgroundModes": [
+          "remote-notification"
         ],
-        "UIRemoteNotificationTypes": ["alert", "badge", "sound"]
+        "UIRequiredDeviceCapabilities": [
+          "arm64"
+        ],
+        "UIRemoteNotificationTypes": [
+          "alert",
+          "badge",
+          "sound"
+        ],
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -32,7 +36,7 @@
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#ffffff"
       },
-      "googleServicesFile": "./android/app/google-services.json",
+      "googleServicesFile": "./google-services.json",
       "package": "com.theanderson98.cemearapp",
       "versionCode": 17
     },

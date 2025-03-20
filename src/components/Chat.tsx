@@ -12,8 +12,10 @@ import {
   Keyboard,
   Alert,
   Linking,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
-import { SendHorizontal as SendHorizontal, Paperclip, Download } from "lucide-react-native";
+import { SendHorizontal, Paperclip, Download } from "lucide-react-native";
 import io from "socket.io-client";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BlurView } from "expo-blur";
@@ -21,8 +23,6 @@ import { Audio } from "expo-av";
 import * as DocumentPicker from "expo-document-picker";
 import axios from "axios";
 import { Ionicons } from "@expo/vector-icons";
-import * as FileSystem from "expo-file-system";
-import * as Sharing from "expo-sharing";
 
 // Tipagem para as props do componente Chat usando React Navigation
 import { RouteProp } from "@react-navigation/native";
@@ -90,14 +90,14 @@ const Chat: React.FC<ChatProps> = ({ route }) => {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
   const soundObjectRef = useRef<Audio.Sound | null>(null);
-  const limit = 20; // Limite de mensagens por página
+  const limit = 20;
 
   useEffect(() => {
     const loadSound = async () => {
@@ -122,89 +122,141 @@ const Chat: React.FC<ChatProps> = ({ route }) => {
   }, []);
 
   useEffect(() => {
-    if (!conversationId || !userId) return;
-  
+    if (!conversationId || !userId) {
+      console.warn("⚠️ conversationId ou userId não fornecidos:", { conversationId, userId });
+      return;
+    }
+
+    console.log("🔌 Inicializando conexão com o socket...");
     const newSocket = io("https://cemear-b549eb196d7c.herokuapp.com", {
       path: "/socket.io",
       query: { userId },
       transports: ["websocket"],
+      reconnection: true, // Habilita reconexão automática
+      reconnectionAttempts: 5, // Número de tentativas de reconexão
+      reconnectionDelay: 1000, // Tempo entre tentativas de reconexão (ms)
     });
-  
+
     setSocket(newSocket);
-  
+
     newSocket.on("connect", () => {
-      console.log("Socket conectado!");
+      console.log("✅ Socket conectado com sucesso! ID:", newSocket.id);
+      console.log("📩 Entrando na conversa:", conversationId);
       newSocket.emit("joinConversation", conversationId);
     });
-  
-    newSocket.on("newMessage", (message: Message) => {
-      setMessages((prevMessages) => {
-        const exists = prevMessages.some((msg) => msg.id === message.id);
-        return exists ? prevMessages : [message, ...prevMessages];
-      });
-  
-      // Toca o som somente se a mensagem recebida for de outra pessoa
-      if (message.senderId !== userId) {
-        playNotificationSound();
-      }
+
+    newSocket.on("connect_error", (error) => {
+      console.error("❌ Erro ao conectar ao socket:", error.message);
     });
-  
+
+    newSocket.on("disconnect", (reason) => {
+      console.warn("⚠️ Socket desconectado:", reason);
+    });
+
+    newSocket.on("reconnect", (attempt) => {
+      console.log("🔄 Socket reconectado após", attempt, "tentativas");
+      newSocket.emit("joinConversation", conversationId);
+    });
+
+    newSocket.on("reconnect_failed", () => {
+      console.error("❌ Falha ao reconectar ao socket após todas as tentativas");
+    });
+
+    newSocket.on("newMessage", (message: Message) => {
+      console.log("📬 Evento newMessage recebido:", message);
+
+      setMessages((prevMessages) => {
+        // Verifica se a mensagem já existe pelo ID oficial
+        const exists = prevMessages.some((msg) => msg.id === message.id);
+        if (exists) {
+          console.log("⚠️ Mensagem já existe, ignorando:", message.id);
+          return prevMessages; // Evita adicionar duplicatas
+        }
+
+        // Adiciona a nova mensagem no topo (mais recente)
+        console.log("✅ Adicionando nova mensagem:", message.id);
+        const updatedMessages = [message, ...prevMessages];
+        if (message.senderId !== userId) {
+          playNotificationSound();
+        }
+        return updatedMessages;
+      });
+
+      // Rola para o topo (mensagem mais recente) quando uma nova mensagem chega
+      setTimeout(() => {
+        scrollToBottom();
+      }, 100);
+    });
+
     newSocket.on("messagesRead", ({ conversationId: convId, userId: readerId }) => {
+      console.log("📖 Evento messagesRead recebido:", { convId, readerId });
       if (convId === conversationId && readerId === receiverId) {
         setMessages((prevMessages) =>
           prevMessages.map((msg) => ({ ...msg, read: true }))
         );
       }
     });
-  
-    fetchMessages(true); // Carregar o primeiro lote ao iniciar
-  
+
+    newSocket.on("error", (error) => {
+      console.error("❌ Erro recebido do socket:", error);
+      Alert.alert("Erro", error.message || "Ocorreu um erro no servidor.");
+    });
+
+    fetchMessages(true);
+
     return () => {
+      console.log("🔌 Desconectando socket...");
       newSocket.disconnect();
     };
   }, [conversationId, userId]);
-  
 
   const playNotificationSound = async () => {
     if (soundObjectRef.current) {
       try {
         await soundObjectRef.current.replayAsync();
-        console.log("Som de notificação tocado com sucesso");
+        console.log("✅ Som de notificação tocado com sucesso");
       } catch (error) {
-        console.error("Erro ao tocar o som:", error);
+        console.error("❌ Erro ao tocar o som:", error);
       }
     } else {
-      console.log("Som não carregado ainda");
+      console.log("⚠️ Som não carregado ainda");
     }
   };
 
   const firstLoad = useRef(true);
 
-
   const fetchMessages = useCallback(
     async (initialLoad = false) => {
       if (isLoadingMore && !initialLoad) return;
-  
+
       setIsLoadingMore(true);
       try {
         const token = await AsyncStorage.getItem("token");
+        if (!token) {
+          throw new Error("Token de autenticação não encontrado");
+        }
+
         const fetchPage = initialLoad ? 1 : page + 1;
-  
+        console.log(`📥 Buscando mensagens - Página ${fetchPage}, Limite ${limit}`);
+
         const response = await fetch(
           `https://cemear-b549eb196d7c.herokuapp.com/conversations/${conversationId}/messages?page=${fetchPage}&limit=${limit}`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }
         );
-  
-        if (!response.ok) throw new Error("Falha ao carregar mensagens");
-  
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || "Falha ao carregar mensagens");
+        }
+
         const data = await response.json();
-  
+        console.log(`✅ Mensagens recebidas - Total: ${data.messages.length}, HasMore: ${data.hasMore}`);
+
         if (initialLoad) {
+          // Carrega as mensagens iniciais (primeira página)
           setMessages(data.messages);
-          
-          // Executa o scroll automático APENAS no primeiro carregamento
           if (firstLoad.current) {
             setTimeout(() => {
               scrollToBottom();
@@ -212,17 +264,24 @@ const Chat: React.FC<ChatProps> = ({ route }) => {
             firstLoad.current = false;
           }
         } else {
-          setMessages((prevMessages) => [...prevMessages, ...data.messages]);
+          // Adiciona mensagens mais antigas ao final da lista
+          setMessages((prevMessages) => {
+            // Filtra mensagens duplicadas com base no ID
+            const newMessages = data.messages.filter(
+              (newMsg: Message) => !prevMessages.some((msg) => msg.id === newMsg.id)
+            );
+            return [...prevMessages, ...newMessages];
+          });
         }
-  
+
         setPage(fetchPage);
         setHasMore(data.hasMore);
-  
+
         if (data.messages.some((msg) => msg.receiverId === userId && !msg.read)) {
           markMessagesAsRead();
         }
       } catch (error) {
-        console.error("Erro ao buscar mensagens:", error);
+        console.error("❌ Erro ao buscar mensagens:", error.message);
         Alert.alert("Erro", "Não foi possível carregar as mensagens.");
       } finally {
         setLoading(false);
@@ -237,63 +296,98 @@ const Chat: React.FC<ChatProps> = ({ route }) => {
     },
     [conversationId, page, isLoadingMore, limit]
   );
-  
-  
-  
 
   const markMessagesAsRead = async () => {
     try {
       const token = await AsyncStorage.getItem("token");
-      if (!token) return;
+      if (!token) {
+        console.warn("⚠️ Token de autenticação não encontrado");
+        return;
+      }
 
-      await fetch(`https://cemear-b549eb196d7c.herokuapp.com/conversations/${conversationId}/messages/read`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      });
+      console.log("📖 Marcando mensagens como lidas...");
+      await fetch(
+        `https://cemear-b549eb196d7c.herokuapp.com/conversations/${conversationId}/messages/read`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        }
+      );
 
-      socket?.emit("messagesRead", { conversationId, userId });
+      if (socket) {
+        console.log("📩 Emitindo evento messagesRead:", { conversationId, userId });
+        socket.emit("messagesRead", { conversationId, userId });
+      }
+
       setMessages((prevMessages) =>
         prevMessages.map((msg) => ({ ...msg, read: true }))
       );
+      console.log("✅ Mensagens marcadas como lidas localmente");
     } catch (error) {
-      console.error("Erro ao marcar mensagens como lidas:", error);
+      console.error("❌ Erro ao marcar mensagens como lidas:", error.message);
     }
   };
 
   const scrollToBottom = () => {
-    flatListRef.current?.scrollToOffset({ offset: 0, animated: true }); // Offset 0 com inverted=true
+    if (flatListRef.current) {
+      console.log("📜 Rolando para o topo da lista de mensagens");
+      flatListRef.current.scrollToOffset({ offset: 0, animated: true });
+    }
   };
 
   const handleLoadMore = () => {
     if (!isLoadingMore && hasMore) {
-      fetchMessages(false); // Carrega o próximo lote
+      console.log("📥 Carregando mais mensagens...");
+      fetchMessages(false);
     }
   };
 
   const sendMessage = () => {
-    if (!newMessage.trim() || !socket) return;
-  
-    const messageData: Partial<Message> = {
+    if (!newMessage.trim()) {
+      console.warn("⚠️ Tentativa de enviar mensagem vazia");
+      return;
+    }
+
+    if (!socket) {
+      console.error("❌ Socket não está inicializado");
+      Alert.alert("Erro", "Não foi possível enviar a mensagem. Tente novamente.");
+      return;
+    }
+
+    if (isSending) {
+      console.warn("⚠️ Envio de mensagem já em andamento");
+      return;
+    }
+
+    setIsSending(true);
+    console.log("📩 Preparando para enviar mensagem...");
+
+    const messageData = {
       conversationId,
       senderId: userId,
       receiverId,
       content: newMessage,
-      createdAt: new Date().toISOString(),
-      read: false,
-      sender: { id: userId, usuario: "", avatar: null },
-      receiver: { id: receiverId, usuario: "", avatar: null },
-      id: `${Date.now()}-${Math.random()}`, // ID temporário até confirmação do backend
     };
-  
-    // Atualiza localmente imediatamente
-    setMessages((prevMessages) => [messageData as Message, ...prevMessages]);
+
+    console.log("📤 Emitindo evento sendMessage:", messageData);
+
+    try {
+      socket.emit("sendMessage", messageData);
+      console.log("✅ Evento sendMessage emitido com sucesso");
+    } catch (error) {
+      console.error("❌ Erro ao emitir evento sendMessage:", error.message);
+      Alert.alert("Erro", "Não foi possível enviar a mensagem. Tente novamente.");
+    }
+
     setNewMessage("");
     Keyboard.dismiss();
-  
-    // Envia ao backend
-    socket.emit("sendMessage", messageData);
+
+    // Reativa o botão após um pequeno delay
+    setTimeout(() => {
+      setIsSending(false);
+      console.log("✅ Estado de envio redefinido");
+    }, 1000);
   };
-  
 
   interface FileForUpload {
     uri: string;
@@ -474,7 +568,11 @@ const Chat: React.FC<ChatProps> = ({ route }) => {
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 45 : 25}
+    >
       {loading ? (
         <ActivityIndicator size="large" color="#00AEEF" style={styles.loader} />
       ) : (
@@ -484,7 +582,7 @@ const Chat: React.FC<ChatProps> = ({ route }) => {
             ref={flatListRef}
             data={messages}
             renderItem={renderItem}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item) => item.id} // Usa apenas o ID oficial
             contentContainerStyle={styles.messagesList}
             showsVerticalScrollIndicator={false}
             onEndReached={() => {
@@ -518,17 +616,17 @@ const Chat: React.FC<ChatProps> = ({ route }) => {
             <TouchableOpacity
               style={[
                 styles.sendButton,
-                !newMessage.trim() && styles.sendButtonDisabled,
+                (!newMessage.trim() || isSending) && styles.sendButtonDisabled,
               ]}
               onPress={sendMessage}
-              disabled={!newMessage.trim()}
+              disabled={!newMessage.trim() || isSending}
             >
               <SendHorizontal size={28} color="white" strokeWidth={2.5} />
             </TouchableOpacity>
           </View>
         </Animated.View>
       )}
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 

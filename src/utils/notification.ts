@@ -77,7 +77,12 @@ const getPushToken = async (): Promise<{ expoPushToken: string | null; firebaseT
       await AsyncStorage.setItem("firebasePushToken", firebaseToken);
     } else if (Platform.OS === "ios") {
       console.log("📌 Obtendo Expo Push Token...");
-      expoPushToken = (await Notifications.getExpoPushTokenAsync()).data;
+      
+      // Aqui está a correção 👇👇👇
+      expoPushToken = (await Notifications.getExpoPushTokenAsync({
+        projectId: "ecf65d93-030d-40c4-9c90-1bc55efa9eaf", // seu projectId do EAS
+      })).data;
+
       await AsyncStorage.setItem("expoPushToken", expoPushToken);
     }
 
@@ -89,3 +94,4 @@ const getPushToken = async (): Promise<{ expoPushToken: string | null; firebaseT
     return { expoPushToken: null, firebaseToken: null };
   }
 };
+

@@ -17,7 +17,7 @@ import Feed from "../components/Feed";
 import PostForm from "../components/PostForm";
 import NavButton from "../components/botoesNav";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useNavigation, useIsFocused } from "@react-navigation/native";
+import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../types";
 import io from "socket.io-client";
@@ -26,22 +26,173 @@ const SOCKET_URL = "https://cemear-b549eb196d7c.herokuapp.com";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
+interface Message {
+  id: string;
+  content: string;
+  createdAt: string;
+  read: boolean;
+  receiverId: string;
+  senderId: string;
+  conversationId: string;
+}
+
+interface Conversation {
+  id: string;
+  user1Id: string;
+  user2Id: string;
+  messages: Message[];
+  unreadCount: number;
+}
+
 const FeedScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const [showPostForm, setShowPostForm] = useState(false);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [tipoUsuario, setTipoUsuario] = useState<string | null>(null);
   const [unreadMessages, setUnreadMessages] = useState<number>(0);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
   const socket = useRef<SocketIOClient.Socket | null>(null);
-  const isFocused = useIsFocused();
 
   useEffect(() => {
-    const fetchTipoUsuario = async () => {
+    const initialize = async () => {
       const tipo = await AsyncStorage.getItem("tipoUsuario");
+      const storedUserId = await AsyncStorage.getItem("userId");
       setTipoUsuario(tipo);
+
+      if (storedUserId) {
+        setUserId(storedUserId);
+        await fetchConversations(storedUserId);
+      }
     };
-    fetchTipoUsuario();
+
+    initialize();
+
+    return () => {
+      if (socket.current) {
+        socket.current.disconnect();
+      }
+    };
   }, []);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    // Inicializa o socket após o userId ser definido
+    socket.current = io(SOCKET_URL, { query: { userId } });
+
+    socket.current.on("connect", () => {
+      console.log("Socket conectado no FeedScreen:", socket.current?.id);
+      // Inscreve o usuário em todas as salas de conversas
+      conversations.forEach((conv) => {
+        socket.current?.emit("joinConversation", conv.id);
+        console.log(`Usuário ${userId} entrou na conversa ${conv.id}`);
+      });
+    });
+
+    socket.current.on("newMessage", (message: Message) => {
+      console.log("📥 Nova mensagem recebida no FeedScreen:", message);
+      setConversations((prev) => {
+        const updatedConversations = prev.map((conv) => {
+          if (conv.id === message.conversationId) {
+            const isNewMessageForUser = message.receiverId === userId && !message.read;
+            return {
+              ...conv,
+              messages: [message, ...conv.messages], // Adiciona a nova mensagem no início
+              unreadCount: isNewMessageForUser ? conv.unreadCount + 1 : conv.unreadCount,
+            };
+          }
+          return conv;
+        });
+
+        // Calcula o total de mensagens não lidas
+        const totalUnread = updatedConversations.reduce(
+          (sum, conv) => sum + (conv.unreadCount || 0),
+          0
+        );
+        setUnreadMessages(totalUnread);
+        console.log("✅ Total de mensagens não lidas atualizado:", totalUnread);
+
+        return updatedConversations;
+      });
+    });
+
+    socket.current.on("messagesRead", ({ conversationId, userId: readerId }) => {
+      console.log(`📖 Mensagens marcadas como lidas na conversa ${conversationId} por ${readerId}`);
+      if (readerId === userId) {
+        setConversations((prev) => {
+          const updatedConversations = prev.map((conv) =>
+            conv.id === conversationId
+              ? {
+                  ...conv,
+                  unreadCount: 0, // Zera o contador de mensagens não lidas
+                  messages: conv.messages.map((msg) => ({
+                    ...msg,
+                    read: msg.receiverId === userId ? true : msg.read,
+                  })),
+                }
+              : conv
+          );
+
+          // Calcula o novo total de mensagens não lidas
+          const totalUnread = updatedConversations.reduce(
+            (sum, conv) => sum + (conv.unreadCount || 0),
+            0
+          );
+          setUnreadMessages(totalUnread);
+          console.log("✅ Total de mensagens não lidas atualizado após leitura:", totalUnread);
+
+          return updatedConversations;
+        });
+      }
+    });
+
+    return () => {
+      if (socket.current) {
+        socket.current.disconnect();
+      }
+    };
+  }, [userId, conversations]);
+
+  const fetchConversations = async (storedUserId: string) => {
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return;
+
+      console.log("📡 Buscando conversas...");
+      const response = await fetch(`${SOCKET_URL}/conversations`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ Erro na resposta do servidor: ${response.status} - ${errorText}`);
+        return;
+      }
+
+      const conversationsData: Conversation[] = await response.json();
+      console.log("📋 Conversas recebidas:", conversationsData);
+
+      // Calcula unreadCount inicial baseado nas mensagens
+      const conversationsWithUnread = conversationsData.map((conv) => ({
+        ...conv,
+        unreadCount: conv.messages.filter((msg) => msg.receiverId === storedUserId && !msg.read).length,
+      }));
+
+      setConversations(conversationsWithUnread);
+      const totalUnread = conversationsWithUnread.reduce(
+        (sum, conv) => sum + (conv.unreadCount || 0),
+        0
+      );
+      setUnreadMessages(totalUnread);
+      console.log("✅ Total de mensagens não lidas inicial:", totalUnread);
+    } catch (error) {
+      console.error("❌ Erro ao buscar conversas:", error.message);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -54,7 +205,11 @@ const FeedScreen: React.FC = () => {
           <NavButton iconName="add-circle-outline" onPress={() => setShowPostForm(true)} />
         )}
         <NavButton iconName="calendar-outline" onPress={() => setShowCalendarModal(true)} />
-        <NavButton iconName="chatbubble-outline" onPress={() => navigation.navigate("DirectMessages")} badgeCount={unreadMessages} />
+        <NavButton
+          iconName="chatbubble-outline"
+          onPress={() => navigation.navigate("DirectMessages")}
+          badgeCount={unreadMessages}
+        />
       </View>
 
       {/* Modal para criar postagem */}
