@@ -15,7 +15,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.theanderson98.CemearApp",
       "icon": "./assets/icon.png",
-      "buildNumber": "45",
+      "buildNumber": "49",
       "infoPlist": {
         "UIBackgroundModes": [
           "remote-notification"

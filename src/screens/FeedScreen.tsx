@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import {
   SafeAreaView,
   View,
@@ -17,10 +17,10 @@ import Feed from "../components/Feed";
 import PostForm from "../components/PostForm";
 import NavButton from "../components/botoesNav";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native"; // Adicionar useFocusEffect
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../types";
-import io from "socket.io-client";
+import { socketManager } from "../utils/socketManager";
 
 const SOCKET_URL = "https://cemear-b549eb196d7c.herokuapp.com";
 
@@ -52,80 +52,94 @@ const FeedScreen: React.FC = () => {
   const [unreadMessages, setUnreadMessages] = useState<number>(0);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
-  const socket = useRef<SocketIOClient.Socket | null>(null);
+  const hasFetchedConversations = React.useRef(false);
 
+  // Inicialização inicial
   useEffect(() => {
     const initialize = async () => {
       const tipo = await AsyncStorage.getItem("tipoUsuario");
       const storedUserId = await AsyncStorage.getItem("userId");
       setTipoUsuario(tipo);
 
-      if (storedUserId) {
+      if (storedUserId && !hasFetchedConversations.current) {
         setUserId(storedUserId);
+        socketManager.connect(storedUserId); // Conectar o socket global
         await fetchConversations(storedUserId);
+        hasFetchedConversations.current = true;
       }
     };
 
     initialize();
 
     return () => {
-      if (socket.current) {
-        socket.current.disconnect();
-      }
+      socketManager.off("newMessage");
+      socketManager.off("messagesRead");
     };
   }, []);
 
+  // Listeners do socket
   useEffect(() => {
     if (!userId) return;
 
-    // Inicializa o socket após o userId ser definido
-    socket.current = io(SOCKET_URL, { query: { userId } });
-
-    socket.current.on("connect", () => {
-      console.log("Socket conectado no FeedScreen:", socket.current?.id);
-      // Inscreve o usuário em todas as salas de conversas
+    socketManager.on("connect", () => {
+      console.log("Socket conectado:", socketManager.getSocket()?.id);
       conversations.forEach((conv) => {
-        socket.current?.emit("joinConversation", conv.id);
-        console.log(`Usuário ${userId} entrou na conversa ${conv.id}`);
+        socketManager.emit("joinConversation", conv.id);
+        console.log(`Juntando-se à conversa ${conv.id}`);
       });
     });
 
-    socket.current.on("newMessage", (message: Message) => {
-      console.log("📥 Nova mensagem recebida no FeedScreen:", message);
+    socketManager.on("newMessage", (message: Message) => {
+      console.log("Nova mensagem recebida:", message);
       setConversations((prev) => {
+        let conversationExists = false;
         const updatedConversations = prev.map((conv) => {
           if (conv.id === message.conversationId) {
-            const isNewMessageForUser = message.receiverId === userId && !message.read;
+            conversationExists = true;
+            const isNewForUser = message.receiverId === userId && !message.read;
+            const updatedMessages = [...conv.messages, message]; // Ordem ascendente
+            const newUnreadCount = isNewForUser ? (conv.unreadCount || 0) + 1 : conv.unreadCount;
             return {
               ...conv,
-              messages: [message, ...conv.messages], // Adiciona a nova mensagem no início
-              unreadCount: isNewMessageForUser ? conv.unreadCount + 1 : conv.unreadCount,
+              messages: updatedMessages,
+              unreadCount: newUnreadCount,
             };
           }
           return conv;
         });
 
-        // Calcula o total de mensagens não lidas
+        if (!conversationExists) {
+          const newConversation = {
+            id: message.conversationId,
+            user1Id: message.senderId,
+            user2Id: message.receiverId,
+            messages: [message],
+            unreadCount: message.receiverId === userId && !message.read ? 1 : 0,
+          };
+          updatedConversations.push(newConversation);
+          socketManager.emit("joinConversation", message.conversationId);
+          console.log(`Juntando-se à nova conversa ${message.conversationId}`);
+        }
+
         const totalUnread = updatedConversations.reduce(
           (sum, conv) => sum + (conv.unreadCount || 0),
           0
         );
+        console.log("Total de não lidas após nova mensagem:", totalUnread);
         setUnreadMessages(totalUnread);
-        console.log("✅ Total de mensagens não lidas atualizado:", totalUnread);
-
         return updatedConversations;
       });
     });
 
-    socket.current.on("messagesRead", ({ conversationId, userId: readerId }) => {
-      console.log(`📖 Mensagens marcadas como lidas na conversa ${conversationId} por ${readerId}`);
+    socketManager.on("messagesRead", ({ conversationId, userId: readerId }) => {
+      console.log("Mensagens lidas:", conversationId, readerId);
       if (readerId === userId) {
         setConversations((prev) => {
           const updatedConversations = prev.map((conv) =>
             conv.id === conversationId
               ? {
                   ...conv,
-                  unreadCount: 0, // Zera o contador de mensagens não lidas
+                  unreadCount: 0,
                   messages: conv.messages.map((msg) => ({
                     ...msg,
                     read: msg.receiverId === userId ? true : msg.read,
@@ -133,33 +147,39 @@ const FeedScreen: React.FC = () => {
                 }
               : conv
           );
-
-          // Calcula o novo total de mensagens não lidas
           const totalUnread = updatedConversations.reduce(
             (sum, conv) => sum + (conv.unreadCount || 0),
             0
           );
+          console.log("Total de não lidas após leitura:", totalUnread);
           setUnreadMessages(totalUnread);
-          console.log("✅ Total de mensagens não lidas atualizado após leitura:", totalUnread);
-
           return updatedConversations;
         });
       }
     });
 
     return () => {
-      if (socket.current) {
-        socket.current.disconnect();
-      }
+      socketManager.off("newMessage");
+      socketManager.off("messagesRead");
+      socketManager.off("connect");
     };
   }, [userId, conversations]);
+
+  // Sincronizar conversas ao voltar para o FeedScreen
+  useFocusEffect(
+    React.useCallback(() => {
+      if (userId) {
+        console.log("FeedScreen em foco, sincronizando conversas...");
+        fetchConversations(userId); // Recarregar conversas para atualizar o estado
+      }
+    }, [userId])
+  );
 
   const fetchConversations = async (storedUserId: string) => {
     try {
       const token = await AsyncStorage.getItem("token");
       if (!token) return;
 
-      console.log("📡 Buscando conversas...");
       const response = await fetch(`${SOCKET_URL}/conversations`, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -168,17 +188,16 @@ const FeedScreen: React.FC = () => {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`❌ Erro na resposta do servidor: ${response.status} - ${errorText}`);
+        console.error("Erro ao buscar conversas:", response.status);
         return;
       }
 
       const conversationsData: Conversation[] = await response.json();
-      console.log("📋 Conversas recebidas:", conversationsData);
+      console.log("Conversas recebidas:", conversationsData);
 
-      // Calcula unreadCount inicial baseado nas mensagens
       const conversationsWithUnread = conversationsData.map((conv) => ({
         ...conv,
+        messages: conv.messages.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()), // Ordem ascendente
         unreadCount: conv.messages.filter((msg) => msg.receiverId === storedUserId && !msg.read).length,
       }));
 
@@ -188,11 +207,20 @@ const FeedScreen: React.FC = () => {
         0
       );
       setUnreadMessages(totalUnread);
-      console.log("✅ Total de mensagens não lidas inicial:", totalUnread);
+      console.log("Total inicial de não lidas:", totalUnread);
+
+      if (socketManager.isConnected()) {
+        conversationsWithUnread.forEach((conv) => {
+          socketManager.emit("joinConversation", conv.id);
+          console.log(`Juntando-se à conversa ${conv.id}`);
+        });
+      }
     } catch (error) {
-      console.error("❌ Erro ao buscar conversas:", error.message);
+      console.error("Erro ao buscar conversas:", error);
     }
   };
+
+  console.log("Renderizando FeedScreen com unreadMessages:", unreadMessages);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -208,7 +236,7 @@ const FeedScreen: React.FC = () => {
         <NavButton
           iconName="chatbubble-outline"
           onPress={() => navigation.navigate("DirectMessages")}
-          badgeCount={unreadMessages}
+          badgeCount={unreadMessages > 0 ? unreadMessages : 0}
         />
       </View>
 

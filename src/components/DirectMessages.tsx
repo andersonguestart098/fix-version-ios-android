@@ -12,11 +12,11 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../types";
 import { UserCircle, Search } from "lucide-react-native";
-import io from "socket.io-client";
+import { socketManager } from "../utils/socketManager";
 
 const SOCKET_URL = "https://cemear-b549eb196d7c.herokuapp.com";
 
@@ -61,76 +61,79 @@ const DirectMessages: React.FC = () => {
   const [searchText, setSearchText] = useState("");
   const [loading, setLoading] = useState(true);
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const socket = useRef<SocketIOClient.Socket | null>(null);
+  const currentConversationId = useRef<string | null>(null);
 
-  useEffect(() => {
-    const fetchUserData = async () => {
-      const storedUserId = await AsyncStorage.getItem("userId");
-      if (storedUserId) {
-        setUserId(storedUserId);
-        await fetchUsersAndConversations(storedUserId);
-      }
-      setLoading(false);
+  const initializeSocket = (storedUserId: string) => {
+    socketManager.connect(storedUserId);
 
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 500,
-        useNativeDriver: true,
-      }).start();
-    };
-
-    fetchUserData();
-
-    return () => {
-      if (socket.current) {
-        socket.current.disconnect();
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!userId) return;
-
-    socket.current = io(SOCKET_URL, { query: { userId } });
-
-    socket.current.on("connect", () => {
-      console.log("Socket conectado no DirectMessages:", socket.current?.id);
+    socketManager.on("connect", () => {
+      console.log("✅ Socket conectado! ID:", socketManager.getSocket()?.id);
+      socketManager.emit("userConnected", storedUserId);
       conversations.forEach((conv) => {
-        socket.current?.emit("joinConversation", conv.id);
-        console.log(`Usuário ${userId} entrou na conversa ${conv.id}`);
+        socketManager.emit("joinConversation", conv.id);
+        console.log(`📩 Inscrevendo-se na conversa ${conv.id}`);
       });
     });
 
-    socket.current.on("userOnlineStatus", (onlineUserIds) => {
+    socketManager.on("userOnlineStatus", (onlineUserIds: string[]) => {
       console.log("📡 Usuários online atualizados:", onlineUserIds);
       setOnlineUsers(onlineUserIds);
     });
 
-    socket.current.on("newMessage", (message: Message) => {
-      console.log("📥 Nova mensagem recebida no DirectMessages:", message);
+    socketManager.on("newMessage", (message: Message) => {
+      console.log("📥 Nova mensagem recebida:", message);
       setConversations((prev) => {
-        const updatedConversations = prev.map((conv) => {
-          if (conv.id === message.conversationId) {
-            const isNewMessageForUser = message.receiverId === userId && !message.read;
-            return {
-              ...conv,
-              messages: [message, ...conv.messages],
-              unreadCount: isNewMessageForUser ? conv.unreadCount + 1 : conv.unreadCount,
-            };
-          }
-          return conv;
-        });
+        const updatedConversations = [...prev];
+        const convIndex = updatedConversations.findIndex(
+          (conv) => conv.id === message.conversationId
+        );
+
+        const isForUser = message.receiverId === storedUserId && !message.read;
+        const isCurrentConversation = message.conversationId === currentConversationId.current;
+
+        if (convIndex !== -1) {
+          const conv = updatedConversations[convIndex];
+          const newMessages = [message, ...conv.messages.filter((msg) => msg.id !== message.id)];
+          const unreadCount = isCurrentConversation
+            ? 0
+            : newMessages.filter((msg) => msg.receiverId === storedUserId && !msg.read).length;
+
+          updatedConversations[convIndex] = {
+            ...conv,
+            messages: newMessages,
+            unreadCount,
+          };
+          console.log(
+            `📈 Conversa ${conv.id} atualizada. isCurrent: ${isCurrentConversation}, unreadCount: ${unreadCount}`
+          );
+        } else if (isForUser) {
+          const newConversation: Conversation = {
+            id: message.conversationId,
+            user1Id: message.senderId,
+            user2Id: storedUserId,
+            messages: [message],
+            user1: { id: message.senderId, usuario: "Desconhecido" },
+            user2: { id: storedUserId, usuario: "Eu" },
+            unreadCount: isCurrentConversation ? 0 : 1,
+          };
+          updatedConversations.unshift(newConversation);
+          socketManager.emit("joinConversation", message.conversationId);
+          console.log(
+            `🆕 Nova conversa ${message.conversationId} adicionada. unreadCount: ${newConversation.unreadCount}`
+          );
+        }
+
         return updatedConversations.sort((a, b) => {
-          const lastMessageA = a.messages.length ? new Date(a.messages[0].createdAt).getTime() : 0;
-          const lastMessageB = b.messages.length ? new Date(b.messages[0].createdAt).getTime() : 0;
-          return lastMessageB - lastMessageA;
+          const lastMessageA = a.messages[0]?.createdAt || "0";
+          const lastMessageB = b.messages[0]?.createdAt || "0";
+          return new Date(lastMessageB).getTime() - new Date(lastMessageA).getTime();
         });
       });
     });
 
-    socket.current.on("messagesRead", ({ conversationId, userId: readerId }) => {
-      console.log(`📖 Mensagens marcadas como lidas na conversa ${conversationId} por ${readerId}`);
-      if (readerId === userId) {
+    socketManager.on("messagesRead", ({ conversationId, userId: readerId }) => {
+      console.log(`📖 Mensagens lidas na conversa ${conversationId} por ${readerId}`);
+      if (readerId === storedUserId) {
         setConversations((prev) =>
           prev.map((conv) =>
             conv.id === conversationId
@@ -139,7 +142,7 @@ const DirectMessages: React.FC = () => {
                   unreadCount: 0,
                   messages: conv.messages.map((msg) => ({
                     ...msg,
-                    read: msg.receiverId === userId ? true : msg.read,
+                    read: msg.receiverId === storedUserId ? true : msg.read,
                   })),
                 }
               : conv
@@ -147,37 +150,84 @@ const DirectMessages: React.FC = () => {
         );
       }
     });
+  };
 
-    return () => {
-      if (socket.current) {
-        socket.current.disconnect();
-      }
-    };
-  }, [userId, conversations]);
+  useFocusEffect(
+    React.useCallback(() => {
+      const initialize = async () => {
+        console.log("🔍 Iniciando DirectMessages...");
+        const storedUserId = await AsyncStorage.getItem("userId");
+        if (!storedUserId) {
+          console.warn("⚠️ Nenhum userId encontrado no AsyncStorage");
+          return;
+        }
+
+        setUserId(storedUserId);
+        console.log("👤 UserId definido:", storedUserId);
+
+        console.log("🔗 Conectando socket global...");
+        initializeSocket(storedUserId);
+
+        console.log("🔍 Estado do socket antes de fetch:", socketManager.isConnected() ? "Conectado" : "Desconectado");
+        await fetchUsersAndConversations(storedUserId);
+        setLoading(false);
+
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        }).start();
+
+        console.log("✅ Inicialização concluída");
+      };
+
+      initialize();
+
+      return () => {
+        console.log("🛑 Cleanup do DirectMessages. Removendo listeners temporariamente.");
+        socketManager.off("newMessage");
+        socketManager.off("messagesRead");
+        socketManager.off("userOnlineStatus");
+        socketManager.off("connect");
+      };
+    }, [])
+  );
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const updatedFilteredList = searchText.trim()
+      ? [
+          ...conversations.filter((conv) => {
+            const otherUser = conv.user1Id === userId ? conv.user2 : conv.user1;
+            return otherUser.usuario.toLowerCase().includes(searchText.toLowerCase());
+          }),
+          ...users.filter((user) => user.usuario.toLowerCase().includes(searchText.toLowerCase())),
+        ]
+      : [...conversations, ...users];
+
+    setFilteredList(updatedFilteredList);
+    console.log("📋 FilteredList atualizado:", updatedFilteredList.length);
+  }, [conversations, users, searchText, userId]);
 
   const fetchUsersAndConversations = async (storedUserId: string) => {
     try {
       const token = await AsyncStorage.getItem("token");
-      if (!token) return;
+      if (!token) throw new Error("Token não encontrado");
 
-      console.log("📡 Buscando conversas...");
+      console.log("📡 Buscando usuários e conversas...");
       const [usersResponse, conversationsResponse] = await Promise.all([
-        axios.get(`${SOCKET_URL}/auth/users`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        axios.get(`${SOCKET_URL}/conversations`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
+        axios.get(`${SOCKET_URL}/auth/users`, { headers: { Authorization: `Bearer ${token}` } }),
+        axios.get(`${SOCKET_URL}/conversations`, { headers: { Authorization: `Bearer ${token}` } }),
       ]);
 
       const sortedConversations = conversationsResponse.data.sort((a: Conversation, b: Conversation) => {
-        const lastMessageA = a.messages.length ? new Date(a.messages[0].createdAt).getTime() : 0;
-        const lastMessageB = b.messages.length ? new Date(b.messages[0].createdAt).getTime() : 0;
-        return lastMessageB - lastMessageA;
+        const lastMessageA = a.messages[0]?.createdAt || "0";
+        const lastMessageB = b.messages[0]?.createdAt || "0";
+        return new Date(lastMessageB).getTime() - new Date(lastMessageA).getTime();
       });
 
       setConversations(sortedConversations);
-
       const conversationUserIds = sortedConversations.flatMap((conv) => [conv.user1Id, conv.user2Id]);
       const usersWithoutConversation = usersResponse.data.filter(
         (user: User) => user.id !== storedUserId && !conversationUserIds.includes(user.id)
@@ -185,157 +235,125 @@ const DirectMessages: React.FC = () => {
 
       setUsers(usersWithoutConversation);
       setFilteredList([...sortedConversations, ...usersWithoutConversation]);
+      console.log(
+        "📡 Dados carregados:",
+        sortedConversations.length,
+        "conversas,",
+        usersWithoutConversation.length,
+        "usuários"
+      );
+
+      if (socketManager.isConnected()) {
+        sortedConversations.forEach((conv) => {
+          socketManager.emit("joinConversation", conv.id);
+          console.log(`📩 Inscrevendo-se na conversa ${conv.id}`);
+        });
+      }
     } catch (error) {
-      console.error("❌ Erro ao buscar dados:", error);
+      console.error("❌ Erro ao carregar dados:", error.message);
     }
   };
-
-  useEffect(() => {
-    if (!searchText.trim()) {
-      setFilteredList([...conversations, ...users]);
-      return;
-    }
-
-    const lowerText = searchText.toLowerCase();
-
-    const filteredConversations = conversations.filter((conv) => {
-      const otherUser = conv.user1Id === userId ? conv.user2 : conv.user1;
-      return otherUser.usuario.toLowerCase().includes(lowerText);
-    });
-
-    const filteredUsers = users.filter((user) => user.usuario.toLowerCase().includes(lowerText));
-
-    setFilteredList([...filteredConversations, ...filteredUsers]);
-  }, [searchText, conversations, users]);
 
   const isUserOnline = (userId: string) => onlineUsers.includes(userId);
 
   const openChat = async (selectedUser: User) => {
     if (!userId) return;
-  
+
+    console.log("🚪 Abrindo chat com:", selectedUser.usuario);
     const existingConversation = conversations.find(
       (conv) =>
         (conv.user1Id === userId && conv.user2Id === selectedUser.id) ||
         (conv.user2Id === userId && conv.user1Id === selectedUser.id)
     );
-  
+
     if (existingConversation) {
       await markMessagesAsRead(existingConversation.id);
+      currentConversationId.current = existingConversation.id;
       navigation.navigate("Chat", {
         conversationId: existingConversation.id,
         userId,
         receiverId: selectedUser.id,
       });
     } else {
-      console.log(`🆕 Criando nova conversa com ${selectedUser.usuario}...`);
       try {
         const token = await AsyncStorage.getItem("token");
-        if (!token) return;
-  
         const response = await axios.post(
           `${SOCKET_URL}/conversations`,
           { user2Id: selectedUser.id },
           { headers: { Authorization: `Bearer ${token}` } }
         );
-  
+
         const newConversation: Conversation = {
           ...response.data,
           messages: [],
-          user1: users.find((u) => u.id === userId) || { id: userId, usuario: "Eu" },
+          user1: { id: userId, usuario: "Eu" },
           user2: selectedUser,
           unreadCount: 0,
         };
-  
+
         setConversations((prev) => [newConversation, ...prev]);
-        setFilteredList((prev) => [newConversation, ...prev.filter((item) => (item as User).id !== selectedUser.id)]);
-  
-        if (socket.current) {
-          socket.current.emit("joinConversation", newConversation.id);
-          console.log(`Usuário ${userId} entrou na nova conversa ${newConversation.id}`);
+        setFilteredList((prev) => [newConversation, ...prev.filter((item) => (item as User)?.id !== selectedUser.id)]);
+        currentConversationId.current = newConversation.id;
+
+        if (socketManager.isConnected()) {
+          socketManager.emit("joinConversation", newConversation.id);
         }
-  
+
         navigation.navigate("Chat", {
-          conversationId: response.data.id,
+          conversationId: newConversation.id,
           userId,
           receiverId: selectedUser.id,
         });
       } catch (error) {
-        console.error("❌ Erro ao criar conversa:", error);
+        console.error("❌ Erro ao criar conversa:", error.message);
       }
     }
+
+    navigation.addListener("blur", () => {
+      currentConversationId.current = null;
+      console.log("🔄 currentConversationId resetado ao sair do Chat");
+    });
   };
 
-  const fetchInitialUnreadCount = async () => {
-    try {
-      const token = await AsyncStorage.getItem("token");
-      const userId = await AsyncStorage.getItem("userId");
-      if (!token || !userId) {
-        console.error("❌ Token ou userId não encontrados:", { token, userId });
-        return;
-      }
-  
-      console.log("🔍 Buscando conversas para contar mensagens não lidas...");
-  
-      const response = await fetch(`${SOCKET_URL}/conversations`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-  
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`❌ Erro na resposta do servidor: ${response.status} - ${errorText}`);
-        return;
-      }
-  
-      const conversations: Conversation[] = await response.json();
-      console.log("📋 Conversas recebidas:", conversations);
-  
-      const totalUnread = conversations.reduce(
-        (sum, conv) => sum + (conv.unreadCount || 0),
-        0
-      );
-  
-      console.log("✅ Total de mensagens não lidas calculado:", totalUnread);
-    } catch (error) {
-      console.error("❌ Erro ao buscar contagem inicial de mensagens não lidas:", error.message);
-    }
-  };
-  
   const markMessagesAsRead = async (conversationId: string) => {
     try {
       const token = await AsyncStorage.getItem("token");
-      if (!token) return;
-  
+      if (!token || !userId) return;
+
+      console.log(`📖 Marcando mensagens como lidas na conversa ${conversationId}`);
       await axios.post(
         `${SOCKET_URL}/conversations/${conversationId}/messages/read`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
-  
-      console.log(`📖 Mensagens da conversa ${conversationId} marcadas como lidas.`);
-  
+
       setConversations((prev) =>
         prev.map((conv) =>
-          conv.id === conversationId ? { ...conv, unreadCount: 0 } : conv
+          conv.id === conversationId
+            ? {
+                ...conv,
+                unreadCount: 0,
+                messages: conv.messages.map((msg) => ({
+                  ...msg,
+                  read: msg.receiverId === userId ? true : msg.read,
+                })),
+              }
+            : conv
         )
       );
-  
-      if (socket.current) {
-        socket.current.emit("messagesRead", { conversationId, userId });
+
+      if (socketManager.isConnected()) {
+        socketManager.emit("messagesRead", { conversationId, userId });
+        console.log(`📩 Emitido messagesRead para ${conversationId}`);
       }
-  
-      fetchInitialUnreadCount();
     } catch (error) {
-      console.error("❌ Erro ao marcar mensagens como lidas:", error);
+      console.error("❌ Erro ao marcar mensagens como lidas:", error.message);
     }
   };
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Mensagens Diretas</Text>
-
       <View style={styles.searchContainer}>
         <Search size={20} color="#64748b" />
         <TextInput
@@ -346,51 +364,52 @@ const DirectMessages: React.FC = () => {
           onChangeText={setSearchText}
         />
       </View>
-
       {loading ? (
         <ActivityIndicator size="large" color="#007AFF" />
       ) : (
-        <FlatList
-          data={filteredList}
-          renderItem={({ item }) => {
-            const isUser = (item as User).usuario !== undefined;
-            const user = isUser
-              ? (item as User)
-              : (item as Conversation).user1Id === userId
-              ? (item as Conversation).user2
-              : (item as Conversation).user1;
-            const unreadCount = !isUser ? (item as Conversation).unreadCount : 0;
+        <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
+          <FlatList
+            data={filteredList}
+            renderItem={({ item }) => {
+              const isUser = (item as User).usuario !== undefined;
+              const user = isUser
+                ? (item as User)
+                : (item as Conversation).user1Id === userId
+                ? (item as Conversation).user2
+                : (item as Conversation).user1;
+              const unreadCount = !isUser ? (item as Conversation).unreadCount : 0;
+              const lastMessage = !isUser && (item as Conversation).messages.length > 0
+                ? (item as Conversation).messages[0].content
+                : "Iniciar conversa";
 
-            return (
-              <TouchableOpacity style={styles.conversationItem} onPress={() => openChat(user)}>
-                <View style={styles.avatarContainer}>
-                  {user.avatar ? (
-                    <Image source={{ uri: user.avatar }} style={styles.avatar} />
-                  ) : (
-                    <UserCircle size={50} color="#A0A0A0" />
-                  )}
-                  {isUserOnline(user.id) && (
-                    <View style={styles.onlineIndicator} />
-                  )}
-                </View>
-                <View style={styles.textContainer}>
-                  <Text style={styles.userName}>{user.usuario}</Text>
-                  <Text style={styles.lastMessage} numberOfLines={1}>
-                    {!isUser && (item as Conversation).messages.length > 0
-                      ? (item as Conversation).messages[0].content
-                      : "Iniciar conversa"}
-                  </Text>
-                </View>
-                {unreadCount > 0 && (
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>{unreadCount}</Text>
+              return (
+                <TouchableOpacity style={styles.conversationItem} onPress={() => openChat(user)}>
+                  <View style={styles.avatarContainer}>
+                    {user.avatar ? (
+                      <Image source={{ uri: user.avatar }} style={styles.avatar} />
+                    ) : (
+                      <UserCircle size={50} color="#A0A0A0" />
+                    )}
+                    {isUserOnline(user.id) && <View style={styles.onlineIndicator} />}
                   </View>
-                )}
-              </TouchableOpacity>
-            );
-          }}
-          keyExtractor={(item) => (item as any).id}
-        />
+                  <View style={styles.textContainer}>
+                    <Text style={styles.userName}>{user.usuario}</Text>
+                    <Text style={styles.lastMessage} numberOfLines={1}>
+                      {lastMessage}
+                    </Text>
+                  </View>
+                  {unreadCount > 0 && (
+                    <View style={styles.badge}>
+                      <Text style={styles.badgeText}>{unreadCount}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            }}
+            keyExtractor={(item) => (item as any).id}
+            extraData={conversations}
+          />
+        </Animated.View>
       )}
     </View>
   );

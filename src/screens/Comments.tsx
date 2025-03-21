@@ -1,4 +1,3 @@
-// src/screens/Comments.tsx
 import React, { useEffect, useState } from "react";
 import {
   View,
@@ -8,6 +7,8 @@ import {
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { RouteProp, useRoute } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
@@ -27,6 +28,7 @@ const CommentsScreen: React.FC = () => {
   const [comments, setComments] = useState<CommentType[]>([]);
   const [newComment, setNewComment] = useState("");
   const [loading, setLoading] = useState(true);
+  const [isSending, setIsSending] = useState(false);
 
   const route = useRoute<RouteProp<RootStackParamList, "Comments">>();
   const { postId } = route.params;
@@ -50,6 +52,17 @@ const CommentsScreen: React.FC = () => {
   };
 
   const handleAddComment = async () => {
+    if (!newComment.trim()) {
+      console.warn("⚠️ Tentativa de enviar comentário vazio");
+      return;
+    }
+
+    if (isSending) {
+      console.warn("⚠️ Envio de comentário já em andamento");
+      return;
+    }
+
+    setIsSending(true);
     try {
       const token = await AsyncStorage.getItem("token");
       const response = await axios.post(
@@ -61,6 +74,8 @@ const CommentsScreen: React.FC = () => {
       setNewComment("");
     } catch (error) {
       console.error("Erro ao adicionar comentário:", error);
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -72,65 +87,111 @@ const CommentsScreen: React.FC = () => {
   );
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 45 : 25}
+    >
       {loading ? (
-        <ActivityIndicator size="large" color="#0000ff" />
+        <ActivityIndicator size="large" color="#00AEEF" style={styles.loader} />
       ) : (
         <>
           <FlatList
             data={comments}
             renderItem={renderComment}
             keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.commentsList}
           />
           <View style={styles.inputContainer}>
             <TextInput
               style={styles.input}
-              placeholder="Adicionar comentário"
+              placeholder="Adicionar comentário..."
+              placeholderTextColor="#94a3b8"
               value={newComment}
               onChangeText={setNewComment}
+              multiline
+              maxLength={500}
             />
-            <TouchableOpacity onPress={handleAddComment}>
-              <Ionicons name="send" size={24} color="blue" />
+            <TouchableOpacity
+              style={[
+                styles.sendButton,
+                (!newComment.trim() || isSending) && styles.sendButtonDisabled,
+              ]}
+              onPress={handleAddComment}
+              disabled={!newComment.trim() || isSending}
+            >
+              <Ionicons name="send" size={28} color="white" />
             </TouchableOpacity>
           </View>
         </>
       )}
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 10,
-    backgroundColor: "#f9f9f9",
+    backgroundColor: "#f8fafc", // Alinhado com o fundo do Chat
+  },
+  commentsList: {
+    paddingVertical: 20,
+    paddingBottom: 10,
   },
   commentContainer: {
     marginBottom: 10,
     padding: 10,
     backgroundColor: "#fff",
     borderRadius: 5,
+    marginHorizontal: 16,
   },
   username: {
     fontWeight: "bold",
+    color: "#334155",
   },
   inputContainer: {
     flexDirection: "row",
-    alignItems: "center",
-    marginTop: 10,
-    padding: 10,
+    alignItems: "flex-end",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: "white",
     borderTopWidth: 1,
-    borderColor: "#eaeaea",
+    borderTopColor: "#e2e8f0",
   },
   input: {
     flex: 1,
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderWidth: 1,
-    borderColor: "#ccc",
-    marginRight: 10,
+    minHeight: 48,
+    maxHeight: 120,
+    backgroundColor: "#f1f5f9",
+    borderRadius: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    marginRight: 12,
+    fontSize: 16,
+    color: "#0f172a",
+  },
+  sendButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "#00AEEF",
+    justifyContent: "center",
+    alignItems: "center",
+    alignSelf: "flex-end",
+    shadowColor: "#00AEEF",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4.65,
+    elevation: 6,
+  },
+  sendButtonDisabled: {
+    backgroundColor: "#e2e8f0",
+    shadowOpacity: 0,
+  },
+  loader: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
   },
 });
 
